@@ -4,7 +4,7 @@ ue_import_flipbooks.py
 Runs INSIDE the UE5 editor's Python environment (via remote execution).
 Imports the Death Metal Cat sprite sheet as a texture, creates one PaperSprite
 per detected frame (using boundaries pre-computed from the alpha channel in
-Content/sprite_frames.json), and assembles one PaperFlipbook per action row.
+AgentScripts/sprite_frames.json), and assembles one PaperFlipbook per action row.
 
 Invoke from outside via:
     python send_to_ue.py "exec(open(r'C:\\Users\\calvi\\Desktop\\Projects\\PythonTest\\AgentScripts\\ue_import_flipbooks.py').read())"
@@ -14,7 +14,7 @@ import json
 import unreal
 
 SHEET_PATH = r"C:\Users\calvi\Desktop\Projects\PythonTest\Content\Death_Metal_Cat_sprite_sheet_transparent_matted.png"
-FRAMES_JSON = r"C:\Users\calvi\Desktop\Projects\PythonTest\Content\sprite_frames.json"
+FRAMES_JSON = r"C:\Users\calvi\Desktop\Projects\PythonTest\AgentScripts\sprite_frames.json"
 
 DEST_ROOT = "/Game/Characters/DeathMetalCat"
 TEX_DEST = DEST_ROOT + "/Textures"

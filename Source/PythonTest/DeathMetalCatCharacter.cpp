@@ -4,6 +4,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
@@ -26,6 +28,29 @@ ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
+
+	// Side-scroller camera: pull the camera back along the depth (Y) axis so it views the
+	// X-Z movement plane face-on, rather than the default floating first-person-ish view
+	// APaperCharacter has with no camera at all.
+	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+	CameraBoom->SetupAttachment(RootComponent);
+	CameraBoom->TargetArmLength = 800.f;
+	// Yaw -90 (not +90) so screen-right lines up with world +X -- the same axis
+	// HandleMoveRight drives -- otherwise pressing "right" would move the character
+	// left on screen. Pitch/Roll stay at 0 for a level, undistorted side view.
+	CameraBoom->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	CameraBoom->bUsePawnControlRotation = false;
+	CameraBoom->bInheritPitch = false;
+	CameraBoom->bInheritYaw = false;
+	CameraBoom->bInheritRoll = false;
+	// No occluders expected along the fixed side-view axis; collision test would otherwise
+	// punch the boom in/out unpredictably.
+	CameraBoom->bDoCollisionTest = false;
+	CameraBoom->bEnableCameraRotationLag = false;
+
+	SideViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("SideViewCamera"));
+	SideViewCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
+	SideViewCamera->bUsePawnControlRotation = false;
 }
 
 void ADeathMetalCatCharacter::BeginPlay()

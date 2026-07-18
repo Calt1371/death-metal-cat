@@ -7,6 +7,8 @@
 class UInputAction;
 class UInputMappingContext;
 class UPaperFlipbook;
+class USpringArmComponent;
+class UCameraComponent;
 struct FInputActionValue;
 
 /**
@@ -74,4 +76,14 @@ private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
 	TObjectPtr<UPaperFlipbook> CurrentFlipbook = nullptr;
+
+	// -- Camera --
+
+	/** Holds the camera out along the depth (Y) axis so it views the X-Z movement plane side-on. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USpringArmComponent> CameraBoom;
+
+	/** Fixed side-view camera; does not rotate with player/controller input. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UCameraComponent> SideViewCamera;
 };

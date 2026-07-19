@@ -10,6 +10,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "TimerManager.h"
+#include "Components/BoxComponent.h"
+#include "DrawDebugHelpers.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -52,6 +54,19 @@ ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 	SideViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("SideViewCamera"));
 	SideViewCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	SideViewCamera->bUsePawnControlRotation = false;
+
+	// Sword swing hitbox. Placeholder extent/offset roughly covering the swing area in front of
+	// the character; positioned/mirrored per-attack in HandleSwordAttack based on facing.
+	// QueryOnly + NoCollision-by-default: this only ever needs to report overlaps, never
+	// physically block anything, and must not affect anything outside the active swing window.
+	SwordHitbox = CreateDefaultSubobject<UBoxComponent>(TEXT("SwordHitbox"));
+	SwordHitbox->SetupAttachment(RootComponent);
+	SwordHitbox->SetBoxExtent(FVector(60.f, 50.f, 70.f));
+	SwordHitbox->SetRelativeLocation(FVector(80.f, 0.f, 0.f));
+	SwordHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	SwordHitbox->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	SwordHitbox->SetGenerateOverlapEvents(true);
+	SwordHitbox->OnComponentBeginOverlap.AddDynamic(this, &ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap);
 }
 
 void ADeathMetalCatCharacter::BeginPlay()
@@ -107,6 +122,11 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		{
 			EnhancedInput->BindAction(DodgeAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleDodge);
 		}
+
+		if (SwordAttackAction)
+		{
+			EnhancedInput->BindAction(SwordAttackAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleSwordAttack);
+		}
 	}
 }
 
@@ -129,13 +149,23 @@ void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
 		return;
 	}
 
-	const UPaperFlipbookComponent* SpriteComp = GetSprite();
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
 	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
 
 	// bXYOverride = true: replace X/Y velocity outright for a consistent burst regardless of
 	// current speed. bZOverride = false: don't stomp vertical velocity, so dodging mid-jump/fall
 	// doesn't cancel gravity's effect on Z.
 	LaunchCharacter(FVector(FacingSign * DodgeImpulseStrength, 0.f, 0.f), true, false);
+
+	// Real dedicated dodge art now exists (was a JumpFlipbook placeholder) -- played once,
+	// same treatment as SwordAttackFlipbook, rather than the old placeholder's looping playback.
+	if (SpriteComp && DodgeFlipbook)
+	{
+		SpriteComp->SetFlipbook(DodgeFlipbook);
+		SpriteComp->SetLooping(false);
+		SpriteComp->PlayFromStart();
+		CurrentFlipbook = DodgeFlipbook;
+	}
 
 	bIsDodging = true;
 	bIsInvincible = true;
@@ -159,6 +189,107 @@ bool ADeathMetalCatCharacter::CanTakeDamage() const
 	return !bIsInvincible;
 }
 
+void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
+{
+	if (bIsAttacking)
+	{
+		// Ignore re-triggers while already mid-swing rather than restarting/stacking timers.
+		return;
+	}
+
+	// TEMP diagnostic: lets EnableSwordHitbox log real elapsed delay vs the configured HitboxActiveDelay.
+	SwordAttackStartTime = GetWorld()->GetTimeSeconds();
+
+	bIsAttacking = true;
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		if (SwordAttackFlipbook)
+		{
+			SpriteComp->SetFlipbook(SwordAttackFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = SwordAttackFlipbook;
+		}
+
+		// Mirror the hitbox to whichever side the character is currently facing. Only the sign
+		// of the offset changes -- the box's extent (shape/size) is symmetric either way.
+		// FacingSign matches Scale.X's sign directly: unflipped (Scale.X >= 0, facing right)
+		// puts the hitbox at positive X (screen-right, in front); flipped (Scale.X < 0, facing
+		// left) puts it at negative X (screen-left, in front). Confirmed via logged data across
+		// both facings and both moving/idle -- see git history for the debugging trail.
+		if (SwordHitbox)
+		{
+			const float CurrentScaleX = SpriteComp->GetRelativeScale3D().X;
+			const float FacingSign = (CurrentScaleX < 0.f) ? -1.f : 1.f;
+			FVector Loc = SwordHitbox->GetRelativeLocation();
+			Loc.X = FacingSign * FMath::Abs(Loc.X);
+			SwordHitbox->SetRelativeLocation(Loc);
+
+			UE_LOG(LogTemp, Warning, TEXT("[SWING START] Velocity.X=%f  Scale.X(read)=%f  FacingSign=%f  Hitbox.RelativeLocation=%s"),
+				GetVelocity().X, CurrentScaleX, FacingSign, *SwordHitbox->GetRelativeLocation().ToString());
+		}
+	}
+
+	// Hitbox turns on partway through the swing (skipping wind-up) and off again before the
+	// swing fully ends (skipping recovery) -- see HitboxActiveDelay/HitboxActiveDuration comments.
+	GetWorldTimerManager().SetTimer(SwordHitboxEnableTimerHandle, this, &ADeathMetalCatCharacter::EnableSwordHitbox, HitboxActiveDelay, false);
+	GetWorldTimerManager().SetTimer(SwordAttackEndTimerHandle, this, &ADeathMetalCatCharacter::ClearAttackState, AttackDuration, false);
+}
+
+void ADeathMetalCatCharacter::EnableSwordHitbox()
+{
+	if (SwordHitbox)
+	{
+		SwordHitbox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+
+		// TEMP diagnostic: real elapsed delay (should be ~= HitboxActiveDelay) and Scale.X read
+		// again here, to compare against the [SWING START] log -- if these Scale.X values differ,
+		// something changed facing between swing start and hitbox-enable.
+		const float Elapsed = GetWorld()->GetTimeSeconds() - SwordAttackStartTime;
+		const float ScaleXNow = GetSprite() ? GetSprite()->GetRelativeScale3D().X : 0.f;
+		UE_LOG(LogTemp, Warning, TEXT("[HITBOX ENABLE] Elapsed=%f (configured HitboxActiveDelay=%f)  Scale.X(read)=%f  Hitbox.RelativeLocation=%s  Hitbox.WorldLocation=%s"),
+			Elapsed, HitboxActiveDelay, ScaleXNow, *SwordHitbox->GetRelativeLocation().ToString(), *SwordHitbox->GetComponentLocation().ToString());
+
+		// TEMP visualization only -- 2s lifetime has nothing to do with the real HitboxActiveDuration
+		// collision window, it's just long enough to actually see. Drawn here (not at swing start)
+		// so what you see is the box at its real activation moment, not its position at click-time.
+		DrawDebugBox(GetWorld(), SwordHitbox->GetComponentLocation(), SwordHitbox->GetScaledBoxExtent(),
+			SwordHitbox->GetComponentQuat(), FColor::Green, false, 2.0f, 0, 3.0f);
+	}
+
+	GetWorldTimerManager().SetTimer(SwordHitboxDisableTimerHandle, this, &ADeathMetalCatCharacter::DisableSwordHitbox, HitboxActiveDuration, false);
+}
+
+void ADeathMetalCatCharacter::DisableSwordHitbox()
+{
+	if (SwordHitbox)
+	{
+		SwordHitbox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+}
+
+void ADeathMetalCatCharacter::ClearAttackState()
+{
+	bIsAttacking = false;
+}
+
+void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	// Guard against self-overlap (components of this same actor never fire against each other in
+	// practice, but this is the correctness check a real damage system will also need) and a
+	// null actor, so this only ever logs/forwards genuine external hits.
+	if (!OtherActor || OtherActor == this)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s)"), *OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"));
+
+	// TODO: once a damage system exists, this is where it gets called -- e.g.
+	// UGameplayStatics::ApplyDamage(OtherActor, DamageAmount, GetController(), this, DamageType);
+}
+
 void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -177,18 +308,15 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	const bool bAirborne = MoveComp && MoveComp->IsFalling();
 
-	if (bIsDodging)
+	if (bIsAttacking)
 	{
-		// No dedicated dodge art yet -- FB_DeathMetalCat_Jump is reused as a placeholder so
-		// there's at least a distinct "something is happening" visual during the dodge window.
-		// Played normally (looping), unlike the airborne case below which pins specific frames.
-		if (JumpFlipbook && CurrentFlipbook != JumpFlipbook)
-		{
-			SpriteComp->SetFlipbook(JumpFlipbook);
-			SpriteComp->SetLooping(true);
-			SpriteComp->Play();
-			CurrentFlipbook = JumpFlipbook;
-		}
+		// SwordAttackFlipbook is started once (non-looping) in HandleSwordAttack itself, so there's
+		// nothing to switch here -- just make sure nothing else stomps it while attacking.
+	}
+	else if (bIsDodging)
+	{
+		// DodgeFlipbook is started once (non-looping) in HandleDodge itself, so there's nothing
+		// to switch here -- just make sure nothing else stomps it while dodging.
 	}
 	else if (bAirborne)
 	{

@@ -10,7 +10,10 @@ class UInputMappingContext;
 class UPaperFlipbook;
 class USpringArmComponent;
 class UCameraComponent;
+class UBoxComponent;
+class UPrimitiveComponent;
 struct FInputActionValue;
+struct FHitResult;
 
 /**
  * Base gameplay character for Death Metal Cat.
@@ -50,7 +53,23 @@ protected:
 	/** Timer callback: ends the invincibility window (may outlast or be shorter than the dodge state itself). */
 	void ClearInvincibility();
 
-	/** Picks Idle/Walk/Run/Jump/Dodge based on current state, and flips the sprite to face travel direction. */
+	/** Bound to the SwordAttackAction's Started event; plays the swing and arms the hitbox timers. */
+	void HandleSwordAttack(const FInputActionValue& Value);
+
+	/** Timer callback: enables the sword hitbox's collision and arms the disable timer. */
+	void EnableSwordHitbox();
+
+	/** Timer callback: disables the sword hitbox's collision. */
+	void DisableSwordHitbox();
+
+	/** Timer callback: ends the attacking state, allowing another attack to be triggered. */
+	void ClearAttackState();
+
+	/** Bound to SwordHitbox's OnComponentBeginOverlap; the hook a future damage system plugs into. */
+	UFUNCTION()
+	void OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	/** Picks Idle/Walk/Run/Jump/Dodge/SwordAttack based on current state, and flips the sprite to face travel direction. */
 	void UpdateAnimation();
 
 public:
@@ -71,6 +90,10 @@ public:
 	/** Digital (bool) action, triggers a dodge on press. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
 	TObjectPtr<UInputAction> DodgeAction;
+
+	/** Digital (bool) action, triggers a sword attack on press. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
+	TObjectPtr<UInputAction> SwordAttackAction;
 
 	// -- Movement --
 
@@ -96,6 +119,14 @@ public:
 	/** Shown whenever the character is airborne (falling or jumping), regardless of horizontal speed. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> JumpFlipbook;
+
+	/** Shown for the duration of a sword attack. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> SwordAttackFlipbook;
+
+	/** Shown for the duration of a dodge. Real dedicated art (was a placeholder reusing JumpFlipbook). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> DodgeFlipbook;
 
 	// -- Dodge --
 
@@ -128,6 +159,38 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dodge")
 	bool CanTakeDamage() const;
 
+	// -- Sword Attack --
+
+	/**
+	 * Total lockout duration of the attack, in seconds -- doubles as the cooldown, since
+	 * HandleSwordAttack ignores re-triggers for as long as bIsAttacking is true. Placeholder
+	 * value, tune freely. Grounded against FB_DeathMetalCat_SwordAttack's actual length
+	 * (4 frames @ 13fps =~ 0.31s) with a little recovery margin added on top.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float AttackDuration = 0.4f;
+
+	/**
+	 * Seconds after the attack starts before the hitbox turns on -- the wind-up frames
+	 * (SwordAttack_01/02) shouldn't count as active hit frames. Not explicitly requested as a
+	 * separate tunable, but needed to implement "middle portion only" -- see also
+	 * HitboxActiveDuration. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float HitboxActiveDelay = 0.15f;
+
+	/**
+	 * Seconds the hitbox stays enabled once active, roughly covering the strike frame
+	 * (SwordAttack_03, the one with the slash-swirl VFX) without extending into full recovery.
+	 * Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float HitboxActiveDuration = 0.12f;
+
+	/** True for AttackDuration seconds after a sword attack starts; blocks re-triggering. */
+	UPROPERTY(BlueprintReadOnly, Category = "Combat")
+	bool bIsAttacking = false;
+
 private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
@@ -138,6 +201,23 @@ private:
 
 	FTimerHandle DodgeTimerHandle;
 	FTimerHandle IFrameTimerHandle;
+
+	FTimerHandle SwordHitboxEnableTimerHandle;
+	FTimerHandle SwordHitboxDisableTimerHandle;
+	FTimerHandle SwordAttackEndTimerHandle;
+
+	/** TEMP diagnostic: world time HandleSwordAttack started, so EnableSwordHitbox can log actual elapsed delay. */
+	float SwordAttackStartTime = 0.f;
+
+	/**
+	 * Overlap-only hitbox for the sword swing, attached to the (unscaled) root rather than the
+	 * sprite: attaching to the sprite would have it automatically mirror for free via the
+	 * sprite's negative-X facing flip, but negative-scaled collision shapes are a known source of
+	 * subtle physics-engine quirks, so this is positioned manually in HandleSwordAttack instead.
+	 * No collision by default; only enabled during the active window of the swing.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UBoxComponent> SwordHitbox;
 
 	// -- Camera --
 

@@ -3,6 +3,7 @@ import unreal
 for path in [
     "/Game/Characters/DeathMetalCat/Flipbooks/FB_DeathMetalCat_Jump",
     "/Game/Characters/DeathMetalCat/Flipbooks/FB_DeathMetalCat_Shoot",
+    "/Game/Characters/DeathMetalCat/Flipbooks/FB_DeathMetalCat_SwordAttack",
 ]:
     fb = unreal.EditorAssetLibrary.load_asset(path)
     fps = fb.get_editor_property("frames_per_second")

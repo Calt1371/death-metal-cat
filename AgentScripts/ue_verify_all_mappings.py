@@ -2,6 +2,7 @@ import unreal
 
 IMC_PATH = "/Game/Input/IMC_PlayerControls"
 IA_DODGE_PATH = "/Game/Input/IA_Dodge"
+IA_SWORDATTACK_PATH = "/Game/Input/IA_SwordAttack"
 SHOOT_PATH = "/Game/Characters/DeathMetalCat/Flipbooks/FB_DeathMetalCat_Shoot"
 
 imc = unreal.EditorAssetLibrary.load_asset(IMC_PATH)
@@ -32,6 +33,9 @@ for i, m in enumerate(mappings):
 
 ia_dodge_fresh = unreal.EditorAssetLibrary.load_asset(IA_DODGE_PATH)
 print(f"IA_Dodge exists={unreal.EditorAssetLibrary.does_asset_exist(IA_DODGE_PATH)}  value_type={ia_dodge_fresh.get_editor_property('value_type') if ia_dodge_fresh else None}")
+
+ia_sword_fresh = unreal.EditorAssetLibrary.load_asset(IA_SWORDATTACK_PATH)
+print(f"IA_SwordAttack exists={unreal.EditorAssetLibrary.does_asset_exist(IA_SWORDATTACK_PATH)}  value_type={ia_sword_fresh.get_editor_property('value_type') if ia_sword_fresh else None}")
 
 shoot_fresh = unreal.EditorAssetLibrary.load_asset(SHOOT_PATH)
 print("=== FB_DeathMetalCat_Shoot keyframes ===")

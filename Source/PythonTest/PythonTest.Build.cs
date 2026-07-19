@@ -13,7 +13,10 @@ public class PythonTest : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
-			"Paper2D"
+			"Paper2D",
+			"UMG",
+			"Slate",
+			"SlateCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

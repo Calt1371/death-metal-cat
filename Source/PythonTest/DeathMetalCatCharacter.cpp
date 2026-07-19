@@ -13,6 +13,9 @@
 #include "Components/BoxComponent.h"
 #include "DrawDebugHelpers.h"
 #include "CollisionQueryParams.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/DamageType.h"
+#include "DamageNumberActor.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -73,6 +76,8 @@ ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 void ADeathMetalCatCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	Health = MaxHealth;
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
@@ -290,6 +295,86 @@ bool ADeathMetalCatCharacter::CanTakeDamage() const
 	return !bIsInvincible;
 }
 
+float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	if (!CanTakeDamage())
+	{
+		// Mid-dodge i-frames -- ignore entirely, no health change, no Hurt animation.
+		return 0.f;
+	}
+
+	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	if (ActualDamage <= 0.f)
+	{
+		return ActualDamage;
+	}
+
+	Health = FMath::Max(0.f, Health - ActualDamage);
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		if (HurtFlipbook)
+		{
+			SpriteComp->SetFlipbook(HurtFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = HurtFlipbook;
+			bIsHurt = true;
+			GetWorldTimerManager().SetTimer(HurtTimerHandle, this, &ADeathMetalCatCharacter::ClearHurtState, HurtDuration, false);
+		}
+	}
+
+	if (Health <= 0.f && !bIsDead)
+	{
+		bIsDead = true;
+		UE_LOG(LogTemp, Error, TEXT("PLAYER DIED"));
+
+		// No death/respawn flow yet (separate future task) -- for now just stop taking further
+		// input. DisableInput blocks all bound Enhanced Input actions (movement, jump, dodge,
+		// sword, shoot) for this pawn without needing to add a bIsDead guard to every handler.
+		DisableInput(Cast<APlayerController>(GetController()));
+	}
+
+	return ActualDamage;
+}
+
+void ADeathMetalCatCharacter::ClearHurtState()
+{
+	bIsHurt = false;
+}
+
+float ADeathMetalCatCharacter::RollDamage(float BaseDamage, EDamageTier& OutTier) const
+{
+	const float Roll = FMath::FRand();
+	if (Roll < CriticalChance)
+	{
+		OutTier = EDamageTier::Critical;
+		return BaseDamage * CriticalMultiplier;
+	}
+	if (Roll < CriticalChance + WeaknessChance)
+	{
+		OutTier = EDamageTier::Weakness;
+		return BaseDamage * WeaknessMultiplier;
+	}
+	OutTier = EDamageTier::Normal;
+	return BaseDamage;
+}
+
+void ADeathMetalCatCharacter::SpawnDamageNumber(const FVector& Location, float DamageAmount, EDamageTier Tier)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	ADamageNumberActor* Number = World->SpawnActor<ADamageNumberActor>(ADamageNumberActor::StaticClass(), FTransform(Location));
+	if (Number)
+	{
+		Number->InitDamageNumber(DamageAmount, Tier);
+	}
+}
+
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 {
 	if (bIsAttacking)
@@ -312,16 +397,31 @@ void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 
 		// Mirror the hitbox to whichever side the character is currently facing. Only the sign
 		// of the offset changes -- the box's extent (shape/size) is symmetric either way.
-		// FacingSign matches Scale.X's sign directly: unflipped (Scale.X >= 0, facing right)
-		// puts the hitbox at positive X (screen-right, in front); flipped (Scale.X < 0, facing
-		// left) puts it at negative X (screen-left, in front). Confirmed via logged data across
-		// both facings and both moving/idle -- see git history for the debugging trail.
+		// FacingSign matches Scale.X's sign directly (Scale.X >= 0 -> facing right,
+		// FacingSign=+1; Scale.X < 0 -> facing left, FacingSign=-1) -- confirmed correct via a
+		// direct visual cross-check (a debug arrow drawn as a pure world-space offset, verified
+		// to point the same way the sprite visibly faces on screen).
+		//
+		// BUT: SwordHitbox is parented to RootComponent, and its offset is applied via
+		// SetRelativeLocation -- a ROOT-LOCAL offset, not a world-space one. That's only
+		// equivalent to a world-space offset if the root/actor's own rotation is identity. The
+		// old verification of this line only ever checked the logged RelativeLocation/WorldLocation
+		// numbers against the EXPECTED sign convention (self-consistent, since the log and the
+		// convention comment were written by the same assumption) -- it never cross-checked
+		// against an independently-confirmed visual reference. The arrow test did exactly that
+		// and showed the hitbox landing on the opposite side from the visibly-correct facing,
+		// which the root-local-vs-world-space distinction fully explains: this character's
+		// placed/spawned actor rotation isn't identity, so root-local +X isn't world +X here.
+		// Sign is inverted below to compensate. This is correct for THIS character's current
+		// spawn rotation specifically, not a universal geometric law -- if the spawn rotation
+		// ever changes, this may need re-flipping (or switching SwordHitbox to a world-space
+		// SetWorldLocation offset, immune to root rotation, would remove this fragility entirely).
 		if (SwordHitbox)
 		{
 			const float CurrentScaleX = SpriteComp->GetRelativeScale3D().X;
 			const float FacingSign = (CurrentScaleX < 0.f) ? -1.f : 1.f;
 			FVector Loc = SwordHitbox->GetRelativeLocation();
-			Loc.X = FacingSign * FMath::Abs(Loc.X);
+			Loc.X = -FacingSign * FMath::Abs(Loc.X);
 			SwordHitbox->SetRelativeLocation(Loc);
 		}
 	}
@@ -365,10 +465,17 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s)"), *OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"));
+	EDamageTier Tier;
+	const float RolledDamage = RollDamage(SwordBaseDamage, Tier);
+	const float DamageApplied = UGameplayStatics::ApplyDamage(OtherActor, RolledDamage, GetController(), this, UDamageType::StaticClass());
 
-	// TODO: once a damage system exists, this is where it gets called -- e.g.
-	// UGameplayStatics::ApplyDamage(OtherActor, DamageAmount, GetController(), this, DamageType);
+	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s), dealt %.1f damage (tier=%d)"),
+		*OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"), DamageApplied, (int32)Tier);
+
+	if (DamageApplied > 0.f)
+	{
+		SpawnDamageNumber(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
+	}
 }
 
 namespace
@@ -511,7 +618,17 @@ void ADeathMetalCatCharacter::FireShotTrace()
 
 	if (bHit && Hit.GetActor())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit actor: %s at location %s"), *Hit.GetActor()->GetName(), *Hit.Location.ToString());
+		EDamageTier Tier;
+		const float RolledDamage = RollDamage(GunBaseDamage, Tier);
+		const float DamageApplied = UGameplayStatics::ApplyDamage(Hit.GetActor(), RolledDamage, GetController(), this, UDamageType::StaticClass());
+
+		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit actor: %s at location %s, dealt %.1f damage (tier=%d)"),
+			*Hit.GetActor()->GetName(), *Hit.Location.ToString(), DamageApplied, (int32)Tier);
+
+		if (DamageApplied > 0.f)
+		{
+			SpawnDamageNumber(Hit.Location + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
+		}
 	}
 	else
 	{
@@ -580,7 +697,16 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	const bool bAirborne = MoveComp && MoveComp->IsFalling();
 
-	if (bIsAttacking)
+	if (bIsHurt)
+	{
+		// Checked first (highest visual priority): HurtFlipbook is started once (non-looping) in
+		// TakeDamage itself, so there's nothing to switch here -- just make sure a hit reaction
+		// always visually shows even if it lands mid-swing/mid-shot. Note this deliberately does
+		// NOT cancel bIsAttacking/ShootAnimPhase/their timers -- those keep running in the
+		// background and resume controlling the sprite once bIsHurt clears, rather than risking
+		// subtler bugs from force-cancelling unrelated state machines mid-flight.
+	}
+	else if (bIsAttacking)
 	{
 		// SwordAttackFlipbook is started once (non-looping) in HandleSwordAttack itself, so there's
 		// nothing to switch here -- just make sure nothing else stomps it while attacking.

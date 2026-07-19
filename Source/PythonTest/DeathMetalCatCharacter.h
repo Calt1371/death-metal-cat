@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "PaperCharacter.h"
 #include "TimerManager.h"
+#include "DamageTypes.h"
 #include "DeathMetalCatCharacter.generated.h"
 
 class UInputAction;
@@ -12,6 +13,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class UBoxComponent;
 class UPrimitiveComponent;
+class ADamageNumberActor;
 struct FInputActionValue;
 struct FHitResult;
 
@@ -98,7 +100,7 @@ protected:
 	/** Timer callback: ends the attacking state, allowing another attack to be triggered. */
 	void ClearAttackState();
 
-	/** Bound to SwordHitbox's OnComponentBeginOverlap; the hook a future damage system plugs into. */
+	/** Bound to SwordHitbox's OnComponentBeginOverlap: rolls a damage tier, applies damage via UGameplayStatics::ApplyDamage, and spawns a floating damage number on whatever it hits. */
 	UFUNCTION()
 	void OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
@@ -148,6 +150,28 @@ protected:
 
 	/** Picks Idle/Walk/Run/Jump/Dodge/SwordAttack/Shoot based on current state, and flips the sprite to face travel direction. */
 	void UpdateAnimation();
+
+	/**
+	 * Standard AActor::TakeDamage override. Ignores the hit entirely (no health change, no Hurt
+	 * animation) while CanTakeDamage() is false (i.e. mid-dodge i-frames). On a hit that lands:
+	 * deducts Health, plays HurtFlipbook briefly, and on reaching 0 logs "PLAYER DIED" and disables
+	 * further input via DisableInput(). No death/respawn flow yet -- a separate future task.
+	 */
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+
+	/** Timer callback: ends the brief Hurt animation beat, letting UpdateAnimation's normal Idle/Walk/Run/etc. logic resume. */
+	void ClearHurtState();
+
+	/**
+	 * Rolls a damage tier (WeaknessChance / CriticalChance, remainder is Normal) and returns
+	 * BaseDamage scaled by that tier's multiplier; OutTier receives which tier was rolled.
+	 * Centralizes the roll here so OnSwordHitboxBeginOverlap and FireShotTrace both apply
+	 * identical tier logic via one function instead of each rolling independently.
+	 */
+	float RollDamage(float BaseDamage, EDamageTier& OutTier) const;
+
+	/** Spawns an ADamageNumberActor at Location showing DamageAmount color-coded by Tier. */
+	void SpawnDamageNumber(const FVector& Location, float DamageAmount, EDamageTier Tier);
 
 public:
 	// -- Input --
@@ -227,6 +251,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> HoldFireFlipbook;
 
+	/** Shown briefly (HurtDuration seconds) when a hit lands (TakeDamage), then hands back to normal Idle/Walk/Run/etc. logic. Already imported as part of the v2 sprite sheet pass -- just needs assigning here. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> HurtFlipbook;
+
 	// -- Dodge --
 
 	/**
@@ -266,13 +294,48 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Dodge")
 	bool bIsDodging = false;
 
-	/**
-	 * Stub for the future damage system: returns false while invincibility frames are active.
-	 * No damage system exists yet -- this just needs to be correctly wired (true/false at the
-	 * right times) so damage-dealing code has something to check once it exists.
-	 */
+	/** Returns false while invincibility frames are active; TakeDamage() checks this and ignores any hit entirely while it's false. */
 	UFUNCTION(BlueprintCallable, Category = "Dodge")
 	bool CanTakeDamage() const;
+
+	// -- Health / Damage --
+
+	/** Max health. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	float MaxHealth = 100.f;
+
+	/** Current health; set to MaxHealth in BeginPlay. Reaching 0 triggers the "PLAYER DIED" path in TakeDamage. */
+	UPROPERTY(BlueprintReadOnly, Category = "Health")
+	float Health = 100.f;
+
+	/** How long HurtFlipbook shows after a hit lands before returning to normal animation. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	float HurtDuration = 0.4f;
+
+	/**
+	 * Chance [0-1] a damage roll lands on the Weakness tier (see RollDamage). Normal is the
+	 * implicit remainder after Weakness and Critical -- same "last tier gets whatever's left"
+	 * convention used elsewhere in this class (e.g. Dodge's Standing phase). Placeholder value,
+	 * tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = "0", ClampMax = "1"))
+	float WeaknessChance = 0.20f;
+
+	/** Chance [0-1] a damage roll lands on the Critical tier (see RollDamage). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = "0", ClampMax = "1"))
+	float CriticalChance = 0.10f;
+
+	/** Damage multiplier applied on a Weakness roll. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = "1"))
+	float WeaknessMultiplier = 1.25f;
+
+	/** Damage multiplier applied on a Critical roll. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = "1"))
+	float CriticalMultiplier = 1.75f;
+
+	/** Vertical offset (world units) above the hit point a floating damage number spawns at, so it doesn't render exactly at the target's feet/center. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = "0"))
+	float DamageNumberSpawnHeight = 60.f;
 
 	// -- Sword Attack --
 
@@ -306,6 +369,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	bool bIsAttacking = false;
 
+	/** Base damage a sword hit deals, before RollDamage's tier multiplier. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float SwordBaseDamage = 20.f;
+
 	// -- Gun Fire --
 
 	/**
@@ -334,6 +401,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "GunFire")
 	bool bIsShooting = false;
 
+	/** Base damage a gunshot deals, before RollDamage's tier multiplier. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
+	float GunBaseDamage = 10.f;
+
 private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
@@ -341,6 +412,14 @@ private:
 
 	/** Backs CanTakeDamage(); cleared independently of bIsDodging by IFrameTimerHandle. */
 	bool bIsInvincible = false;
+
+	/** True for HurtDuration seconds after a hit lands; UpdateAnimation checks this first (highest visual priority) so a hit reaction always shows even mid-swing/mid-shot. */
+	bool bIsHurt = false;
+
+	FTimerHandle HurtTimerHandle;
+
+	/** True once Health reaches 0; TakeDamage uses this to only log "PLAYER DIED" / call DisableInput once. */
+	bool bIsDead = false;
 
 	FTimerHandle DodgeTimerHandle;
 	FTimerHandle IFrameTimerHandle;

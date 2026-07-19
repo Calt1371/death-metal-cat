@@ -9,6 +9,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "TimerManager.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -96,6 +97,16 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		{
 			EnhancedInput->BindAction(MoveRightAction, ETriggerEvent::Triggered, this, &ADeathMetalCatCharacter::HandleMoveRight);
 		}
+
+		if (JumpAction)
+		{
+			EnhancedInput->BindAction(JumpAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleJump);
+		}
+
+		if (DodgeAction)
+		{
+			EnhancedInput->BindAction(DodgeAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleDodge);
+		}
 	}
 }
 
@@ -103,6 +114,49 @@ void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 {
 	const float AxisValue = Value.Get<float>();
 	AddMovementInput(FVector(1.f, 0.f, 0.f), AxisValue);
+}
+
+void ADeathMetalCatCharacter::HandleJump(const FInputActionValue& Value)
+{
+	Jump();
+}
+
+void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
+{
+	if (bIsDodging)
+	{
+		// Ignore re-triggers while already mid-dodge rather than restarting/stacking timers.
+		return;
+	}
+
+	const UPaperFlipbookComponent* SpriteComp = GetSprite();
+	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+
+	// bXYOverride = true: replace X/Y velocity outright for a consistent burst regardless of
+	// current speed. bZOverride = false: don't stomp vertical velocity, so dodging mid-jump/fall
+	// doesn't cancel gravity's effect on Z.
+	LaunchCharacter(FVector(FacingSign * DodgeImpulseStrength, 0.f, 0.f), true, false);
+
+	bIsDodging = true;
+	bIsInvincible = true;
+
+	GetWorldTimerManager().SetTimer(DodgeTimerHandle, this, &ADeathMetalCatCharacter::ClearDodgeState, DodgeDuration, false);
+	GetWorldTimerManager().SetTimer(IFrameTimerHandle, this, &ADeathMetalCatCharacter::ClearInvincibility, IFrameDuration, false);
+}
+
+void ADeathMetalCatCharacter::ClearDodgeState()
+{
+	bIsDodging = false;
+}
+
+void ADeathMetalCatCharacter::ClearInvincibility()
+{
+	bIsInvincible = false;
+}
+
+bool ADeathMetalCatCharacter::CanTakeDamage() const
+{
+	return !bIsInvincible;
 }
 
 void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
@@ -119,26 +173,66 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		return;
 	}
 
-	// Horizontal-only: falling/jumping (Z velocity) shouldn't trigger Walk/Run.
-	const float Velocity_X = GetVelocity().X;
-	const float Speed = FMath::Abs(Velocity_X);
+	const FVector Velocity = GetVelocity();
+	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	const bool bAirborne = MoveComp && MoveComp->IsFalling();
 
-	UPaperFlipbook* DesiredFlipbook = IdleFlipbook;
-	if (Speed > KINDA_SMALL_NUMBER)
+	if (bIsDodging)
 	{
-		DesiredFlipbook = (Speed >= WalkSpeedThreshold) ? RunFlipbook : WalkFlipbook;
+		// No dedicated dodge art yet -- FB_DeathMetalCat_Jump is reused as a placeholder so
+		// there's at least a distinct "something is happening" visual during the dodge window.
+		// Played normally (looping), unlike the airborne case below which pins specific frames.
+		if (JumpFlipbook && CurrentFlipbook != JumpFlipbook)
+		{
+			SpriteComp->SetFlipbook(JumpFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->Play();
+			CurrentFlipbook = JumpFlipbook;
+		}
+	}
+	else if (bAirborne)
+	{
+		// FB_DeathMetalCat_Jump's two frames (rising pose, landing pose) are picked explicitly
+		// by velocity direction instead of left to play on the flipbook's own timer: how long
+		// the rising pose should hold depends on jump height/gravity, which varies per jump --
+		// a fixed per-keyframe hold on the asset can't express that, so this has to be code-driven.
+		if (JumpFlipbook && CurrentFlipbook != JumpFlipbook)
+		{
+			SpriteComp->SetFlipbook(JumpFlipbook);
+			SpriteComp->Stop();
+			CurrentFlipbook = JumpFlipbook;
+		}
+		if (JumpFlipbook)
+		{
+			const int32 DesiredFrame = (Velocity.Z >= 0.f) ? 0 : 1; // 0 = rising/peak, 1 = falling
+			if (SpriteComp->GetPlaybackPositionInFrames() != DesiredFrame)
+			{
+				SpriteComp->SetPlaybackPositionInFrames(DesiredFrame, false);
+			}
+		}
+	}
+	else
+	{
+		UPaperFlipbook* DesiredFlipbook = IdleFlipbook;
+		const float Speed = FMath::Abs(Velocity.X);
+		if (Speed > KINDA_SMALL_NUMBER)
+		{
+			DesiredFlipbook = (Speed >= WalkSpeedThreshold) ? RunFlipbook : WalkFlipbook;
+		}
+
+		if (DesiredFlipbook && DesiredFlipbook != CurrentFlipbook)
+		{
+			SpriteComp->SetFlipbook(DesiredFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->Play();
+			CurrentFlipbook = DesiredFlipbook;
+		}
 	}
 
-	if (DesiredFlipbook && DesiredFlipbook != CurrentFlipbook)
-	{
-		SpriteComp->SetFlipbook(DesiredFlipbook);
-		CurrentFlipbook = DesiredFlipbook;
-	}
-
-	if (FMath::Abs(Velocity_X) > KINDA_SMALL_NUMBER)
+	if (FMath::Abs(Velocity.X) > KINDA_SMALL_NUMBER)
 	{
 		FVector Scale = SpriteComp->GetRelativeScale3D();
-		Scale.X = (Velocity_X < 0.f) ? -FMath::Abs(Scale.X) : FMath::Abs(Scale.X);
+		Scale.X = (Velocity.X < 0.f) ? -FMath::Abs(Scale.X) : FMath::Abs(Scale.X);
 		SpriteComp->SetRelativeScale3D(Scale);
 	}
 }

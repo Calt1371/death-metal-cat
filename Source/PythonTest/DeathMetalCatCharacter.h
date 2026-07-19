@@ -15,6 +15,14 @@ class UPrimitiveComponent;
 struct FInputActionValue;
 struct FHitResult;
 
+/** Internal-only (not exposed to Blueprint) phase tracking for the held-fire animation sequence. */
+enum class EShootPhase : uint8
+{
+	None,
+	Drawing,
+	HoldFiring,
+};
+
 /**
  * Base gameplay character for Death Metal Cat.
  *
@@ -44,8 +52,33 @@ protected:
 	/** Bound to the JumpAction's Started event; just forwards to ACharacter::Jump(). */
 	void HandleJump(const FInputActionValue& Value);
 
-	/** Bound to the DodgeAction's Started event; launches the character and starts the dodge/i-frame timers. */
+	/** Bound to the DodgeAction's Started event; launches the character and starts the dodge/i-frame/frame-advance timers. */
 	void HandleDodge(const FInputActionValue& Value);
+
+	/**
+	 * Timer callback: advances DodgeCurrentFrame to the next of the flipbook's 5 frames, fires the
+	 * deferred backward impulse on the transition into frame 1 specifically, then re-arms itself
+	 * (via ScheduleNextDodgeFrame) with that new frame's own hold duration -- a chain of one-shot
+	 * timers rather than a single repeating one, since frame 1's hold time now differs from the
+	 * rest (see DodgeWindUpFrameDuration).
+	 */
+	void AdvanceDodgeFrame();
+
+	/**
+	 * Arms DodgeFrameTimerHandle to call AdvanceDodgeFrame() after DodgeCurrentFrame's own hold
+	 * duration (see GetDodgeFrameHoldDuration) -- unless DodgeCurrentFrame is already the last
+	 * frame (4), in which case there's nothing left to advance to.
+	 */
+	void ScheduleNextDodgeFrame();
+
+	/**
+	 * Hold duration (seconds) for the given Dodge flipbook frame index: DodgeWindUpFrameDuration
+	 * for frame 1 (crouch/wind-up), DodgeDuration / 5 for every other frame.
+	 */
+	float GetDodgeFrameHoldDuration(int32 FrameIndex) const;
+
+	/** Sets the sprite to DodgeFlipbook (once) and pins it to the given frame index, code-driven like Jump's/Shoot's. */
+	void SetDodgeFrame(int32 FrameIndex, const TCHAR* Reason);
 
 	/** Timer callback: ends the dodge movement/animation state. */
 	void ClearDodgeState();
@@ -69,7 +102,51 @@ protected:
 	UFUNCTION()
 	void OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-	/** Picks Idle/Walk/Run/Jump/Dodge/SwordAttack based on current state, and flips the sprite to face travel direction. */
+	/** Bound to the ShootAction's Started event: enters the held-fire state and begins the quick-draw pose. */
+	void HandleShootStarted(const FInputActionValue& Value);
+
+	/**
+	 * Bound to the ShootAction's Triggered event (fires every tick while held, including the same
+	 * tick as Started -- FireShotTrace()'s own bIsShooting cooldown gate naturally no-ops that
+	 * redundant first call, and the ShootAnimPhase check below skips it too). Attempts a repeat
+	 * shot once the hold-fire loop has taken over from the initial draw.
+	 */
+	void HandleShootHeld(const FInputActionValue& Value);
+
+	/** Bound to the ShootAction's Completed/Canceled events: marks the button released. */
+	void HandleShootReleased(const FInputActionValue& Value);
+
+	/** Shows the draw pose (from the regular Shoot row), then arms a timer that calls BeginHoldFireLoop() once it's done. */
+	void BeginDraw();
+
+	/**
+	 * Timer callback from BeginDraw(): switches the sprite to the dedicated FB_DeathMetalCat_HoldFire
+	 * flipbook and plays it looping (engine-driven, not manual frame-index jumping -- that flipbook's
+	 * own frames already cycle through the muzzle-flash variations), then fires the first shot.
+	 */
+	void BeginHoldFireLoop();
+
+	/** The actual hitscan trace (unchanged logic from the original single-shot version), gated by
+	 * the FireCooldown cooldown. Purely gameplay -- the hold-fire loop's visuals are event-driven
+	 * separately via BeginHoldFireLoop()'s Play(), not tied per-shot to this call. */
+	void FireShotTrace();
+
+	/** Sets the sprite to ShootFlipbook (once) and pins it to the given frame index, code-driven like Jump's. */
+	void SetShootFrame(int32 FrameIndex, const TCHAR* Reason);
+
+	/**
+	 * Unconditionally clears all shoot-related state: ShootAnimPhase back to None, bIsShooting
+	 * back to false, and cancels the draw/flash/cooldown timers. Called from HandleShootReleased
+	 * on every release regardless of phase, and defensively from HandleShootStarted if it finds
+	 * stale non-None state left over -- rapid press/release timing is exactly where partial
+	 * cleanup (e.g. only resetting on the Aiming case) left ShootAnimPhase stuck indefinitely.
+	 */
+	void ResetShootState();
+
+	/** Timer callback: ends the fire-rate cooldown / shoot animation window, allowing another shot. */
+	void ClearShootingState();
+
+	/** Picks Idle/Walk/Run/Jump/Dodge/SwordAttack/Shoot based on current state, and flips the sprite to face travel direction. */
 	void UpdateAnimation();
 
 public:
@@ -94,6 +171,10 @@ public:
 	/** Digital (bool) action, triggers a sword attack on press. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
 	TObjectPtr<UInputAction> SwordAttackAction;
+
+	/** Digital (bool) action, fires the gun on press. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
+	TObjectPtr<UInputAction> ShootAction;
 
 	// -- Movement --
 
@@ -124,15 +205,49 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> SwordAttackFlipbook;
 
-	/** Shown for the duration of a dodge. Real dedicated art (was a placeholder reusing JumpFlipbook). */
+	/**
+	 * 5-frame back-handspring sequence played once over DodgeDuration (neutral -> wind-up ->
+	 * mid-flip tumble -> landing crouch -> neutral), evenly split and code-driven via
+	 * AdvanceDodgeFrame() -- see HandleDodge.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> DodgeFlipbook;
 
+	/** Shown briefly for the quick-draw pose at the start of a shoot sequence (frame index 2 -- see ShootFrame_Draw). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> ShootFlipbook;
+
+	/**
+	 * Dedicated held-fire loop: a steady gun-extended stance with muzzle-flash variations across
+	 * its 4 frames, played looping for the duration of a hold once the initial draw finishes.
+	 * Separate art from ShootFlipbook -- that row's frames don't include a pose that stays fully
+	 * extended while flashing, which is what made reusing it for held-fire look like a repeated
+	 * draw motion; see git history for the investigation.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> HoldFireFlipbook;
+
 	// -- Dodge --
 
-	/** How long the dodge movement/animation state lasts, in seconds. Placeholder value, tune freely. */
+	/**
+	 * How long the dodge movement/animation state lasts, in seconds -- also determines the default
+	 * per-frame hold time for the 5-frame handspring sequence (DodgeDuration / 5 each -- see
+	 * GetDodgeFrameHoldDuration), EXCEPT frame 1 (crouch/wind-up), which uses
+	 * DodgeWindUpFrameDuration instead of this flat split. 0.35s (~0.07s/frame) was too fast to
+	 * read; 1.25s (~0.25s/frame) was confirmed readable but felt sluggish; 0.75s (~0.15s/frame)
+	 * settled as the base rate for frames 0/2/3/4. Placeholder value, tune freely.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dodge", meta = (ClampMin = "0"))
-	float DodgeDuration = 0.35f;
+	float DodgeDuration = 0.75f;
+
+	/**
+	 * Hold duration (seconds) specifically for frame 1 (crouch/wind-up, the pose right before the
+	 * flip) -- overrides the flat DodgeDuration/5 split used by every other frame, so this one
+	 * pose reads as a quick beat rather than an equal-length hold like the rest. See
+	 * GetDodgeFrameHoldDuration. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dodge", meta = (ClampMin = "0"))
+	float DodgeWindUpFrameDuration = 0.06f;
 
 	/**
 	 * How long invincibility (CanTakeDamage() == false) lasts, in seconds. Tracked independently
@@ -143,7 +258,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dodge", meta = (ClampMin = "0"))
 	float IFrameDuration = 0.35f;
 
-	/** Instantaneous velocity (uu/s) applied along the facing direction when a dodge starts. Placeholder value, tune freely. */
+	/** Instantaneous velocity (uu/s) applied AWAY from the facing direction (a retreat, not a dash toward the threat) when a dodge starts. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dodge", meta = (ClampMin = "0"))
 	float DodgeImpulseStrength = 1200.f;
 
@@ -191,6 +306,34 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	bool bIsAttacking = false;
 
+	// -- Gun Fire --
+
+	/**
+	 * Minimum seconds between actual shots (the hitscan trace itself), independent of how the
+	 * held-fire animation is paced. Unchanged in role from the original single-shot version:
+	 * FireShotTrace() ignores a new shot attempt for as long as bIsShooting is true, and
+	 * ClearShootingState() (fired by a timer of this duration) is what allows the next one.
+	 * Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
+	float FireCooldown = 0.3f;
+
+	/** Max hitscan line-trace distance in uu. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
+	float MaxTraceRange = 2000.f;
+
+	/**
+	 * How long the quick draw pose (frame index 2) shows before the hold-fire loop takes over. Not
+	 * part of the original single-shot spec -- needed to implement "draws fast" as an actual
+	 * visible beat rather than an instant snap. Kept short on purpose. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
+	float DrawDuration = 0.1f;
+
+	/** True for FireCooldown seconds after a shot is fired; blocks re-triggering. */
+	UPROPERTY(BlueprintReadOnly, Category = "GunFire")
+	bool bIsShooting = false;
+
 private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
@@ -201,13 +344,31 @@ private:
 
 	FTimerHandle DodgeTimerHandle;
 	FTimerHandle IFrameTimerHandle;
+	FTimerHandle DodgeFrameTimerHandle;
+
+	/** Which of the 5 Dodge flipbook frames is currently showing; advanced by AdvanceDodgeFrame(). */
+	int32 DodgeCurrentFrame = 0;
+
+	/**
+	 * Facing sign (matches Scale.X's sign convention) captured the instant a dodge starts, so
+	 * UpdateAnimation can hold the sprite facing this direction for the whole dodge instead of
+	 * letting the normal velocity-based flip logic re-face it toward the (backward) dodge
+	 * movement direction.
+	 */
+	float DodgeFacingSignAtStart = 1.f;
 
 	FTimerHandle SwordHitboxEnableTimerHandle;
 	FTimerHandle SwordHitboxDisableTimerHandle;
 	FTimerHandle SwordAttackEndTimerHandle;
 
-	/** TEMP diagnostic: world time HandleSwordAttack started, so EnableSwordHitbox can log actual elapsed delay. */
-	float SwordAttackStartTime = 0.f;
+	FTimerHandle ShootTimerHandle;
+	FTimerHandle ShootDrawTimerHandle;
+
+	/** True while the Shoot input action is physically held down (Started..Completed/Canceled). */
+	bool bIsHoldingShootButton = false;
+
+	/** Drives Draw vs. HoldFiring animation selection; None means no shoot animation is in progress. */
+	EShootPhase ShootAnimPhase = EShootPhase::None;
 
 	/**
 	 * Overlap-only hitbox for the sword swing, attached to the (unscaled) root rather than the

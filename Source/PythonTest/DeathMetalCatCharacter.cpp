@@ -12,6 +12,7 @@
 #include "TimerManager.h"
 #include "Components/BoxComponent.h"
 #include "DrawDebugHelpers.h"
+#include "CollisionQueryParams.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -127,11 +128,34 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		{
 			EnhancedInput->BindAction(SwordAttackAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleSwordAttack);
 		}
+
+		if (ShootAction)
+		{
+			// Triggered (not Ongoing) is what actually fires every tick while a simple digital
+			// action is held -- Ongoing only applies to triggers with hold/delay evaluation logic,
+			// which the default trigger doesn't have, so binding Ongoing would silently never fire.
+			// This mirrors HandleMoveRight's existing Triggered binding above.
+			EnhancedInput->BindAction(ShootAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleShootStarted);
+			EnhancedInput->BindAction(ShootAction, ETriggerEvent::Triggered, this, &ADeathMetalCatCharacter::HandleShootHeld);
+			EnhancedInput->BindAction(ShootAction, ETriggerEvent::Completed, this, &ADeathMetalCatCharacter::HandleShootReleased);
+			EnhancedInput->BindAction(ShootAction, ETriggerEvent::Canceled, this, &ADeathMetalCatCharacter::HandleShootReleased);
+		}
 	}
 }
 
 void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 {
+	// Grounded + holding Shoot, or grounded + mid sword-swing: plant and ignore movement input --
+	// you can't realistically run while firing a held weapon or swinging for power. Airborne is
+	// exempted from both: jump momentum should carry through normally even mid-action, since
+	// that's a different, acceptable case (no realistic "planting" while falling anyway).
+	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	const bool bAirborne = MoveComp && MoveComp->IsFalling();
+	if ((bIsHoldingShootButton || bIsAttacking) && !bAirborne)
+	{
+		return;
+	}
+
 	const float AxisValue = Value.Get<float>();
 	AddMovementInput(FVector(1.f, 0.f, 0.f), AxisValue);
 }
@@ -152,20 +176,33 @@ void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
 	UPaperFlipbookComponent* SpriteComp = GetSprite();
 	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
 
-	// bXYOverride = true: replace X/Y velocity outright for a consistent burst regardless of
-	// current speed. bZOverride = false: don't stomp vertical velocity, so dodging mid-jump/fall
-	// doesn't cancel gravity's effect on Z.
-	LaunchCharacter(FVector(FacingSign * DodgeImpulseStrength, 0.f, 0.f), true, false);
+	// Lock facing to whatever it was the instant the dodge started -- UpdateAnimation checks
+	// bIsDodging and holds the sprite at this sign for the whole dodge, overriding the normal
+	// velocity-based flip that would otherwise re-face the character toward the (backward) dodge
+	// movement direction. Also doubles as the stored launch direction: AdvanceDodgeFrame reads
+	// this back when it fires the deferred LaunchCharacter call on the frame-0-to-1 transition.
+	DodgeFacingSignAtStart = FacingSign;
 
-	// Real dedicated dodge art now exists (was a JumpFlipbook placeholder) -- played once,
-	// same treatment as SwordAttackFlipbook, rather than the old placeholder's looping playback.
-	if (SpriteComp && DodgeFlipbook)
+	// Frame 0 (standing neutral) plays as a brief static beat with zero velocity -- no impulse
+	// yet, and any pre-existing horizontal momentum (e.g. dodging while already running) is
+	// explicitly zeroed so it doesn't visibly slide during this beat. Z is left untouched so a
+	// mid-air dodge doesn't lose its vertical motion. The actual backward impulse (LaunchCharacter)
+	// fires later, from AdvanceDodgeFrame, exactly as frame 1 (the wind-up pose) begins -- see
+	// there for why this is split instead of firing immediately here.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
-		SpriteComp->SetFlipbook(DodgeFlipbook);
-		SpriteComp->SetLooping(false);
-		SpriteComp->PlayFromStart();
-		CurrentFlipbook = DodgeFlipbook;
+		FVector V = MoveComp->Velocity;
+		V.X = 0.f;
+		MoveComp->Velocity = V;
 	}
+
+	// 5-frame back-handspring sequence, played once over DodgeDuration. Frame 1's hold time is
+	// deliberately shorter than the rest -- see GetDodgeFrameHoldDuration/DodgeWindUpFrameDuration
+	// -- so this is a chain of one-shot timers (each re-armed with the current frame's own hold
+	// duration), not a single flat-interval repeating timer.
+	DodgeCurrentFrame = 0;
+	SetDodgeFrame(0, TEXT("frame_0"));
+	ScheduleNextDodgeFrame();
 
 	bIsDodging = true;
 	bIsInvincible = true;
@@ -174,8 +211,72 @@ void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
 	GetWorldTimerManager().SetTimer(IFrameTimerHandle, this, &ADeathMetalCatCharacter::ClearInvincibility, IFrameDuration, false);
 }
 
+void ADeathMetalCatCharacter::AdvanceDodgeFrame()
+{
+	++DodgeCurrentFrame;
+
+	if (DodgeCurrentFrame == 1)
+	{
+		// Deferred from HandleDodge: the backward impulse fires here, synchronized to the exact
+		// timer tick that transitions into frame 1 (the crouch/wind-up pose), so the visual
+		// wind-up and the actual movement start together rather than movement preceding any
+		// visible motion. Retreat, not a dash toward the threat: launch AWAY from
+		// DodgeFacingSignAtStart, not toward it. bXYOverride = true: replace X/Y velocity outright
+		// for a consistent burst regardless of current speed (which is exactly zero right now,
+		// per HandleDodge's frame-0 reset, but this matches the convention used everywhere else
+		// LaunchCharacter is called in this class). bZOverride = false: don't stomp vertical
+		// velocity, so dodging mid-jump/fall doesn't cancel gravity's effect on Z.
+		LaunchCharacter(FVector(-DodgeFacingSignAtStart * DodgeImpulseStrength, 0.f, 0.f), true, false);
+	}
+
+	SetDodgeFrame(DodgeCurrentFrame, TEXT("advance"));
+	ScheduleNextDodgeFrame();
+}
+
+void ADeathMetalCatCharacter::ScheduleNextDodgeFrame()
+{
+	if (DodgeCurrentFrame >= 4)
+	{
+		// Frame 4 (standing) is the last frame -- nothing left to advance to. ClearDodgeState
+		// (armed for DodgeDuration in HandleDodge) handles ending bIsDodging itself.
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(DodgeFrameTimerHandle, this, &ADeathMetalCatCharacter::AdvanceDodgeFrame,
+		GetDodgeFrameHoldDuration(DodgeCurrentFrame), false);
+}
+
+float ADeathMetalCatCharacter::GetDodgeFrameHoldDuration(int32 FrameIndex) const
+{
+	return (FrameIndex == 1) ? DodgeWindUpFrameDuration : (DodgeDuration / 5.f);
+}
+
+void ADeathMetalCatCharacter::SetDodgeFrame(int32 FrameIndex, const TCHAR* Reason)
+{
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	if (!SpriteComp || !DodgeFlipbook)
+	{
+		return;
+	}
+
+	if (CurrentFlipbook != DodgeFlipbook)
+	{
+		SpriteComp->SetFlipbook(DodgeFlipbook);
+		SpriteComp->Stop();
+		CurrentFlipbook = DodgeFlipbook;
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("[DODGE FRAME] t=%f  frame=%d  reason=%s"), GetWorld()->GetTimeSeconds(), FrameIndex, Reason);
+
+	if (SpriteComp->GetPlaybackPositionInFrames() != FrameIndex)
+	{
+		SpriteComp->SetPlaybackPositionInFrames(FrameIndex, false);
+	}
+}
+
 void ADeathMetalCatCharacter::ClearDodgeState()
 {
+	GetWorldTimerManager().ClearTimer(DodgeFrameTimerHandle);
 	bIsDodging = false;
 }
 
@@ -196,9 +297,6 @@ void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 		// Ignore re-triggers while already mid-swing rather than restarting/stacking timers.
 		return;
 	}
-
-	// TEMP diagnostic: lets EnableSwordHitbox log real elapsed delay vs the configured HitboxActiveDelay.
-	SwordAttackStartTime = GetWorld()->GetTimeSeconds();
 
 	bIsAttacking = true;
 
@@ -225,9 +323,6 @@ void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 			FVector Loc = SwordHitbox->GetRelativeLocation();
 			Loc.X = FacingSign * FMath::Abs(Loc.X);
 			SwordHitbox->SetRelativeLocation(Loc);
-
-			UE_LOG(LogTemp, Warning, TEXT("[SWING START] Velocity.X=%f  Scale.X(read)=%f  FacingSign=%f  Hitbox.RelativeLocation=%s"),
-				GetVelocity().X, CurrentScaleX, FacingSign, *SwordHitbox->GetRelativeLocation().ToString());
 		}
 	}
 
@@ -242,20 +337,6 @@ void ADeathMetalCatCharacter::EnableSwordHitbox()
 	if (SwordHitbox)
 	{
 		SwordHitbox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-
-		// TEMP diagnostic: real elapsed delay (should be ~= HitboxActiveDelay) and Scale.X read
-		// again here, to compare against the [SWING START] log -- if these Scale.X values differ,
-		// something changed facing between swing start and hitbox-enable.
-		const float Elapsed = GetWorld()->GetTimeSeconds() - SwordAttackStartTime;
-		const float ScaleXNow = GetSprite() ? GetSprite()->GetRelativeScale3D().X : 0.f;
-		UE_LOG(LogTemp, Warning, TEXT("[HITBOX ENABLE] Elapsed=%f (configured HitboxActiveDelay=%f)  Scale.X(read)=%f  Hitbox.RelativeLocation=%s  Hitbox.WorldLocation=%s"),
-			Elapsed, HitboxActiveDelay, ScaleXNow, *SwordHitbox->GetRelativeLocation().ToString(), *SwordHitbox->GetComponentLocation().ToString());
-
-		// TEMP visualization only -- 2s lifetime has nothing to do with the real HitboxActiveDuration
-		// collision window, it's just long enough to actually see. Drawn here (not at swing start)
-		// so what you see is the box at its real activation moment, not its position at click-time.
-		DrawDebugBox(GetWorld(), SwordHitbox->GetComponentLocation(), SwordHitbox->GetScaledBoxExtent(),
-			SwordHitbox->GetComponentQuat(), FColor::Green, false, 2.0f, 0, 3.0f);
 	}
 
 	GetWorldTimerManager().SetTimer(SwordHitboxDisableTimerHandle, this, &ADeathMetalCatCharacter::DisableSwordHitbox, HitboxActiveDuration, false);
@@ -290,6 +371,197 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	// UGameplayStatics::ApplyDamage(OtherActor, DamageAmount, GetController(), this, DamageType);
 }
 
+namespace
+{
+	// FB_DeathMetalCat_Shoot frame roles (only the draw pose is still used from this row -- the
+	// held-fire loop now comes from the dedicated FB_DeathMetalCat_HoldFire flipbook instead;
+	// see HoldFireFlipbook's doc comment for why):
+	//   [2] arms bent/compact, gun pulled in close to the body -- the one frame visually distinct
+	//       from the other three (which are all full-extension variants); read as the character
+	//       mid-raise, not yet at full extension, so used as the "draw" pose
+	constexpr int32 ShootFrame_Draw = 2;
+}
+
+void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
+{
+	bIsHoldingShootButton = true;
+
+	// TEMP diagnostic: is Started re-firing mid-hold (it shouldn't -- EnhancedInput's Started only
+	// fires once per press), which would explain BeginDraw() (and its draw frame) recurring.
+	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootStarted  ShootAnimPhase(before)=%d"),
+		GetWorld()->GetTimeSeconds(), (int32)ShootAnimPhase);
+
+	// Defensive: don't trust that HandleShootReleased always cleaned up properly. Rapid
+	// press/release timing (or a release racing a movement input) is exactly where that
+	// assumption broke before -- ShootAnimPhase could be left stuck non-None from a prior press,
+	// silently blocking every future BeginDraw() forever. Force a clean slate before proceeding
+	// whenever we find state left over, rather than only handling the case we expect.
+	if (ShootAnimPhase != EShootPhase::None)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] HandleShootStarted found stale ShootAnimPhase=%d, forcing reset"), (int32)ShootAnimPhase);
+		ResetShootState();
+	}
+
+	BeginDraw();
+}
+
+void ADeathMetalCatCharacter::HandleShootHeld(const FInputActionValue& Value)
+{
+	// TEMP diagnostic: prints every Triggered tick's guard inputs, to see exactly why it does or
+	// doesn't proceed to FireShotTrace() each time.
+	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootHeld  bIsHoldingShootButton=%d  ShootAnimPhase=%d  bIsShooting=%d"),
+		GetWorld()->GetTimeSeconds(), bIsHoldingShootButton, (int32)ShootAnimPhase, bIsShooting);
+
+	// Triggered fires every tick while held, including the same tick as Started. Only attempt a
+	// repeat shot once the hold-fire loop has taken over from the initial draw -- this both paces
+	// repeated fire correctly and skips the redundant same-tick call from Started, since
+	// ShootAnimPhase is Drawing (not HoldFiring) at that point. The first shot of a hold fires
+	// from BeginHoldFireLoop() itself, not from here.
+	if (!bIsHoldingShootButton || ShootAnimPhase != EShootPhase::HoldFiring || bIsShooting)
+	{
+		return;
+	}
+
+	FireShotTrace();
+}
+
+void ADeathMetalCatCharacter::HandleShootReleased(const FInputActionValue& Value)
+{
+	// TEMP diagnostic: is this firing spuriously mid-hold (Completed/Canceled should only fire
+	// once, on actual release) -- if so, that would explain ShootAnimPhase getting reset to None
+	// while still held, causing HandleShootStarted to treat the next Triggered/Started as a fresh
+	// press and restart the draw, which would produce exactly the reported draw/flash bounce.
+	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootReleased  ShootAnimPhase(before)=%d"),
+		GetWorld()->GetTimeSeconds(), (int32)ShootAnimPhase);
+
+	bIsHoldingShootButton = false;
+
+	// Unconditional cleanup regardless of which phase we were in when released. The previous
+	// version only reset ShootAnimPhase for the (now-removed) Aiming case, on the assumption an
+	// in-flight draw sequence would always finish naturally and clean up after itself -- but if
+	// that sequence's own fire call bailed out early on its bIsShooting guard (which can happen
+	// on rapid taps, since a prior shot's cooldown may still be active), nothing was ever left to
+	// un-stick ShootAnimPhase, and it stayed stuck at Drawing indefinitely -- the actual freeze
+	// bug, confirmed via the diagnostic logs.
+	ResetShootState();
+}
+
+void ADeathMetalCatCharacter::ResetShootState()
+{
+	GetWorldTimerManager().ClearTimer(ShootDrawTimerHandle);
+	GetWorldTimerManager().ClearTimer(ShootTimerHandle);
+	ShootAnimPhase = EShootPhase::None;
+	bIsShooting = false;
+}
+
+void ADeathMetalCatCharacter::BeginDraw()
+{
+	ShootAnimPhase = EShootPhase::Drawing;
+	SetShootFrame(ShootFrame_Draw, TEXT("draw"));
+	GetWorldTimerManager().SetTimer(ShootDrawTimerHandle, this, &ADeathMetalCatCharacter::BeginHoldFireLoop, DrawDuration, false);
+}
+
+void ADeathMetalCatCharacter::BeginHoldFireLoop()
+{
+	ShootAnimPhase = EShootPhase::HoldFiring;
+
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	if (SpriteComp && HoldFireFlipbook)
+	{
+		// Engine-driven looping playback, not manual SetPlaybackPositionInFrames jumping: this
+		// flipbook's own 4 frames already cycle through the muzzle-flash variations while staying
+		// fully extended, so there's no per-frame role for code to pick between anymore -- just
+		// let it play.
+		SpriteComp->SetFlipbook(HoldFireFlipbook);
+		SpriteComp->SetLooping(true);
+		SpriteComp->PlayFromStart();
+		CurrentFlipbook = HoldFireFlipbook;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  BeginHoldFireLoop"), GetWorld()->GetTimeSeconds());
+
+	FireShotTrace();
+}
+
+void ADeathMetalCatCharacter::FireShotTrace()
+{
+	if (bIsShooting)
+	{
+		// Fire-rate cooldown still active -- this can happen if HandleShootHeld's own guard is
+		// bypassed by the timer-driven call from BeginHoldFireLoop() racing a very short
+		// FireCooldown; bail out rather than fire early. The next Triggered tick will retry once
+		// eligible.
+		return;
+	}
+
+	// Same facing convention as the sword hitbox (confirmed correct via logged data): unflipped
+	// (Scale.X >= 0, facing right) fires toward +X; flipped (Scale.X < 0, facing left) fires -X.
+	// Read fresh each shot (not cached from when the button was first pressed) so a direction
+	// change mid-hold correctly affects the next shot.
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+	const FVector Start = GetActorLocation();
+	const FVector End = Start + FVector(FacingSign * MaxTraceRange, 0.f, 0.f);
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	FHitResult Hit;
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, QueryParams);
+
+	if (bHit && Hit.GetActor())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit actor: %s at location %s"), *Hit.GetActor()->GetName(), *Hit.Location.ToString());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit nothing (traced full range %f)"), MaxTraceRange);
+	}
+
+	// Visualization only, not gameplay-relevant: an instant hitscan has nothing else to see, so
+	// this shows the actual trace path each shot -- red if it hit something, yellow if it reached
+	// max range with no hit. Cheap and harmless to leave in; remove if it gets visually noisy.
+	DrawDebugLine(GetWorld(), Start, bHit ? Hit.Location : End, bHit ? FColor::Red : FColor::Yellow, false, 1.5f, 0, 2.f);
+	if (bHit)
+	{
+		DrawDebugSphere(GetWorld(), Hit.Location, 10.f, 8, FColor::Red, false, 1.5f);
+	}
+
+	bIsShooting = true;
+	GetWorldTimerManager().SetTimer(ShootTimerHandle, this, &ADeathMetalCatCharacter::ClearShootingState, FireCooldown, false);
+}
+
+void ADeathMetalCatCharacter::SetShootFrame(int32 FrameIndex, const TCHAR* Reason)
+{
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	if (!SpriteComp || !ShootFlipbook)
+	{
+		return;
+	}
+
+	if (CurrentFlipbook != ShootFlipbook)
+	{
+		SpriteComp->SetFlipbook(ShootFlipbook);
+		SpriteComp->Stop();
+		CurrentFlipbook = ShootFlipbook;
+	}
+
+	// TEMP diagnostic: every actual frame-index write, with why and when, to see the real
+	// state-machine sequence during a hold instead of guessing at it.
+	UE_LOG(LogTemp, Warning, TEXT("[SHOOT FRAME] t=%f  frame=%d  reason=%s  (was %d)"),
+		GetWorld()->GetTimeSeconds(), FrameIndex, Reason, SpriteComp->GetPlaybackPositionInFrames());
+
+	if (SpriteComp->GetPlaybackPositionInFrames() != FrameIndex)
+	{
+		SpriteComp->SetPlaybackPositionInFrames(FrameIndex, false);
+	}
+}
+
+void ADeathMetalCatCharacter::ClearShootingState()
+{
+	bIsShooting = false;
+}
+
 void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -313,10 +585,19 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// SwordAttackFlipbook is started once (non-looping) in HandleSwordAttack itself, so there's
 		// nothing to switch here -- just make sure nothing else stomps it while attacking.
 	}
+	else if (ShootAnimPhase != EShootPhase::None)
+	{
+		// Draw (event-driven, via SetShootFrame) and HoldFiring (engine-driven looping playback,
+		// started once in BeginHoldFireLoop) both manage their own flipbook/frame state -- nothing
+		// to do here except make sure nothing else stomps it while a shoot sequence is in
+		// progress. Note this checks ShootAnimPhase, not bIsShooting: bIsShooting is only the
+		// short per-shot fire-rate gate now, not the (much longer) whole-hold animation window.
+	}
 	else if (bIsDodging)
 	{
-		// DodgeFlipbook is started once (non-looping) in HandleDodge itself, so there's nothing
-		// to switch here -- just make sure nothing else stomps it while dodging.
+		// The 5-frame handspring sequence is fully event-driven (HandleDodge / AdvanceDodgeFrame
+		// via SetDodgeFrame), not tick-based -- nothing to do here except make sure nothing else
+		// stomps it while a dodge is in progress.
 	}
 	else if (bAirborne)
 	{
@@ -357,7 +638,17 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		}
 	}
 
-	if (FMath::Abs(Velocity.X) > KINDA_SMALL_NUMBER)
+	if (bIsDodging)
+	{
+		// Facing is locked for the whole dodge, not driven by velocity: a dodge's velocity points
+		// backward (away from facing, by design -- see HandleDodge), so the normal velocity-based
+		// flip below would incorrectly re-face the character toward the dodge's movement direction
+		// if allowed to run here. Hold at whatever facing was captured the instant the dodge started.
+		FVector Scale = SpriteComp->GetRelativeScale3D();
+		Scale.X = DodgeFacingSignAtStart * FMath::Abs(Scale.X);
+		SpriteComp->SetRelativeScale3D(Scale);
+	}
+	else if (FMath::Abs(Velocity.X) > KINDA_SMALL_NUMBER)
 	{
 		FVector Scale = SpriteComp->GetRelativeScale3D();
 		Scale.X = (Velocity.X < 0.f) ? -FMath::Abs(Scale.X) : FMath::Abs(Scale.X);

@@ -16,6 +16,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
 #include "DamageNumberActor.h"
+#include "GnarlyRankHUDWidget.h"
+#include "Blueprint/UserWidget.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -103,6 +105,20 @@ void ADeathMetalCatCharacter::NotifyControllerChanged()
 			if (MoveMappingContext)
 			{
 				Subsystem->AddMappingContext(MoveMappingContext, 0);
+			}
+		}
+
+		// Gnarly Rank HUD: a persistent element, created once (the first time this character is
+		// possessed by a player controller) and left in the viewport for the rest of the session --
+		// NotifyControllerChanged is the same proven hook already used above for the input mapping
+		// context, for the same reason (GetController() isn't guaranteed valid yet in BeginPlay).
+		if (!GnarlyRankHUDWidgetInstance)
+		{
+			GnarlyRankHUDWidgetInstance = CreateWidget<UGnarlyRankHUDWidget>(PC, UGnarlyRankHUDWidget::StaticClass());
+			if (GnarlyRankHUDWidgetInstance)
+			{
+				GnarlyRankHUDWidgetInstance->SetOwningCharacter(this);
+				GnarlyRankHUDWidgetInstance->AddToViewport();
 			}
 		}
 	}
@@ -311,6 +327,10 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 
 	Health = FMath::Max(0.f, Health - ActualDamage);
 
+	// Any real damage (past the i-frame check above) fully resets GnarlyRank -- deliberate
+	// high-risk/high-reward design per the GDD, not a bug.
+	ResetGnarlyRank();
+
 	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
 	{
 		if (HurtFlipbook)
@@ -373,6 +393,33 @@ void ADeathMetalCatCharacter::SpawnDamageNumber(const FVector& Location, float D
 	{
 		Number->InitDamageNumber(DamageAmount, Tier);
 	}
+}
+
+void ADeathMetalCatCharacter::RegisterGnarlyHit()
+{
+	++GnarlyHitCount;
+
+	const int32 PreviousRank = GnarlyRank;
+	while (GnarlyRank < GnarlyRankThresholds.Num() && GnarlyHitCount >= GnarlyRankThresholds[GnarlyRank])
+	{
+		++GnarlyRank;
+	}
+
+	if (GnarlyRank != PreviousRank)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GNARLY RANK] Rank up: %d -> %d (GnarlyHitCount=%d)"), PreviousRank, GnarlyRank, GnarlyHitCount);
+	}
+}
+
+void ADeathMetalCatCharacter::ResetGnarlyRank()
+{
+	if (GnarlyHitCount > 0 || GnarlyRank > 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GNARLY RANK] Reset (was rank %d, GnarlyHitCount %d) -- took damage"), GnarlyRank, GnarlyHitCount);
+	}
+
+	GnarlyHitCount = 0;
+	GnarlyRank = 0;
 }
 
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
@@ -466,15 +513,22 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	}
 
 	EDamageTier Tier;
-	const float RolledDamage = RollDamage(SwordBaseDamage, Tier);
+	float RolledDamage = RollDamage(SwordBaseDamage, Tier);
+
+	// GnarlyRank grants a melee-ONLY damage bonus, applied on top of the tier roll above (not
+	// replacing it) -- gun damage deliberately does NOT get this multiplier, see FireShotTrace.
+	const float GnarlyMultiplier = 1.f + (GnarlyRank * GnarlyRankMeleeDamageBonusPerRank);
+	RolledDamage *= GnarlyMultiplier;
+
 	const float DamageApplied = UGameplayStatics::ApplyDamage(OtherActor, RolledDamage, GetController(), this, UDamageType::StaticClass());
 
-	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s), dealt %.1f damage (tier=%d)"),
-		*OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"), DamageApplied, (int32)Tier);
+	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s), dealt %.1f damage (tier=%d, GnarlyRank=%d, GnarlyMultiplier=%.2f)"),
+		*OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"), DamageApplied, (int32)Tier, GnarlyRank, GnarlyMultiplier);
 
 	if (DamageApplied > 0.f)
 	{
 		SpawnDamageNumber(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
+		RegisterGnarlyHit();
 	}
 }
 
@@ -619,6 +673,7 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	if (bHit && Hit.GetActor())
 	{
 		EDamageTier Tier;
+		// No GnarlyRank multiplier here -- deliberately melee-only per the GDD (see OnSwordHitboxBeginOverlap).
 		const float RolledDamage = RollDamage(GunBaseDamage, Tier);
 		const float DamageApplied = UGameplayStatics::ApplyDamage(Hit.GetActor(), RolledDamage, GetController(), this, UDamageType::StaticClass());
 
@@ -628,6 +683,9 @@ void ADeathMetalCatCharacter::FireShotTrace()
 		if (DamageApplied > 0.f)
 		{
 			SpawnDamageNumber(Hit.Location + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
+			// Gun hits still charge GnarlyHitCount toward the next rank -- only the melee damage
+			// bonus itself is sword-exclusive, not rank progression.
+			RegisterGnarlyHit();
 		}
 	}
 	else

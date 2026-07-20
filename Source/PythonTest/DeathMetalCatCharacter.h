@@ -14,6 +14,7 @@ class UCameraComponent;
 class UBoxComponent;
 class UPrimitiveComponent;
 class ADamageNumberActor;
+class UGnarlyRankHUDWidget;
 struct FInputActionValue;
 struct FHitResult;
 
@@ -172,6 +173,21 @@ protected:
 
 	/** Spawns an ADamageNumberActor at Location showing DamageAmount color-coded by Tier. */
 	void SpawnDamageNumber(const FVector& Location, float DamageAmount, EDamageTier Tier);
+
+	/**
+	 * Called whenever a sword or gun hit successfully lands (DamageApplied > 0): increments
+	 * GnarlyHitCount and advances GnarlyRank across any thresholds just crossed. Named
+	 * "GnarlyRank"/"GnarlyHitCount" throughout (never just "tier" or "rank" alone) to stay clearly
+	 * distinct from the unrelated EDamageTier (Normal/Weakness/Critical) damage-roll system.
+	 */
+	void RegisterGnarlyHit();
+
+	/**
+	 * Called from TakeDamage on any real damage taken (past the i-frame check): fully resets
+	 * GnarlyHitCount and GnarlyRank to 0. Deliberate high-risk/high-reward design per the GDD --
+	 * not a bug to soften later (e.g. into a partial-decay system) without an explicit design change.
+	 */
+	void ResetGnarlyRank();
 
 public:
 	// -- Input --
@@ -337,6 +353,42 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = "0"))
 	float DamageNumberSpawnHeight = 60.f;
 
+	// -- Gnarly Rank --
+	//
+	// Deliberately named "GnarlyRank"/"GnarlyHitCount"/"GnarlyRankThresholds" throughout, never
+	// just "tier" or "rank" alone -- this is a wholly separate system from EDamageTier
+	// (Normal/Weakness/Critical, used for floating damage-number colors) and the naming keeps the
+	// two unambiguous in code, logs, and UI text.
+
+	/** Accumulated hits (sword or gun) toward the next GnarlyRank. Fully resets to 0 on any real damage taken -- see ResetGnarlyRank. */
+	UPROPERTY(BlueprintReadOnly, Category = "GnarlyRank")
+	int32 GnarlyHitCount = 0;
+
+	/**
+	 * Current Gnarly rank: 0 (no rank yet) through GnarlyRankThresholds.Num() (max rank, 4 with
+	 * the default thresholds). Grants a melee-ONLY damage multiplier -- see
+	 * GnarlyRankMeleeDamageBonusPerRank -- and fully resets to 0 on any real damage taken.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "GnarlyRank")
+	int32 GnarlyRank = 0;
+
+	/**
+	 * Accumulated-hit thresholds to reach GnarlyRank 1, 2, 3, 4 respectively (index 0 = the
+	 * GnarlyHitCount needed to reach rank 1, etc.) -- see RegisterGnarlyHit. Doubled from the
+	 * original placeholder (5/10/20/35) to 10/20/40/70. Placeholder values, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GnarlyRank")
+	TArray<int32> GnarlyRankThresholds = { 10, 20, 40, 70 };
+
+	/**
+	 * Melee (sword only -- gun is deliberately excluded per the GDD) damage multiplier bonus per
+	 * GnarlyRank: final multiplier is (1 + GnarlyRank * this), applied on top of RollDamage's
+	 * Normal/Weakness/Critical tier multiplier, not replacing it. Placeholder value (5%/rank per
+	 * the GDD), tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GnarlyRank", meta = (ClampMin = "0"))
+	float GnarlyRankMeleeDamageBonusPerRank = 0.05f;
+
 	// -- Sword Attack --
 
 	/**
@@ -448,6 +500,15 @@ private:
 
 	/** Drives Draw vs. HoldFiring animation selection; None means no shoot animation is in progress. */
 	EShootPhase ShootAnimPhase = EShootPhase::None;
+
+	/**
+	 * Created once, the first time this character is possessed by a player controller (see
+	 * NotifyControllerChanged) -- a persistent HUD element added to the viewport, not a
+	 * spawned/destroyed actor like ADamageNumberActor's floating numbers. Polls
+	 * GnarlyRank/GnarlyHitCount itself every tick rather than this class pushing updates to it.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UGnarlyRankHUDWidget> GnarlyRankHUDWidgetInstance;
 
 	/**
 	 * Overlap-only hitbox for the sword swing, attached to the (unscaled) root rather than the

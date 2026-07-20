@@ -1,0 +1,15 @@
+Session Summary — July 15, 2026
+
+Project: Death Metal Cat — 2D side-scrolling action capstone (MAIGD1, single level scope)
+Accomplished:
+Locked core GDD: high concept, core loop, player verbs (sword, gun, dodge w/ i-frames, jump), Gnarly Ranking system (full reset to zero on taking a hit, flat melee damage boost per tier), RPG attributes (Speed/Strength/Dexterity/Defense from level-up points), text-based humor delivery (no voice acting), level design brief, and explicit out-of-scope list (no combo canceling, no skill trees, no multiple levels, no full voice acting).
+Confirmed engine and agent-bridge architecture: Unreal Engine 5, Paper2D enabled, UE5 Python Editor Scripting API (unreal module) via Remote Execution as the Claude Code–to–engine bridge.
+Verified the bridge end-to-end: Claude Code, running externally in a terminal, sent a Python command to a live UE5 editor session and (1) produced a LogPython output line and (2) spawned a visible cube actor in the viewport at a specified location — no manual console typing involved. This was the primary technical bottleneck; it is now closed.
+Resolved a Windows environment chain of issues to get there: Claude Code CLI not on PATH → fixed via native installer + manual PATH entry; Python not installed → installed via winget/installer, required a full terminal/session restart to resolve a stale-PATH issue identical to the Claude Code fix.
+Locked a three-agent roster (no orchestration agent needed at this scale): Level & Encounter Designer (difficulty curve + enemy roster → platform/enemy/pickup layout JSON), Quip Generator (trigger type → text quip + sound-bite tag), Balance/QA Reviewer (encounter JSON → flagged risk/scaling issues). Documented human gates (art, sound, physics/collision, final combat feel — none of these are agent tasks).
+Merged the design doc and technical strategy doc (previously split across two separate chat sessions) into a single GDD file: Death_Metal_Cat_GDD_Draft.md.
+Still open / next steps:
+Pillar 3 (token budget) needs a decision: Claude Pro subscription framing vs. API billing framing — unresolved, changes the section's numbers.
+No agent has been executed yet — all three are designed on paper only. Quip Generator flagged as the fastest one to prove out first (no engine dependency).
+Player controller build (move/jump/dodge/sword/gun) not yet started — next major construction phase, pending a Blueprint-via-Python vs. C++ decision (current lean: stay consistent with the proven Python bridge).
+Assignment #1 (GDD Draft) due July 21 via course portal.

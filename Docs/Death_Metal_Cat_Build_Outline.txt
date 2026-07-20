@@ -1,0 +1,127 @@
+Death_Metal_Cat_Build_Outline
+
+
+Death Metal Cat
+ 
+## Build Outline
+ 
+*Full logical sequence from current state to capstone submission*
+ 
+Status key: ✅ Done   |   ☐ Not started   |   ⚠️ Decision needed before starting
+ 
+# Phase 0 — Foundation (complete)
+ 
+- ✅ GDD locked: mechanics, Gnarly Ranking, RPG attributes, humor system, scope cuts
+ 
+- ✅ Engine + agent bridge verified end-to-end (Claude Code → UE5 Python Remote Execution, confirmed with log output and a spawned cube)
+ 
+- ✅ Three-agent roster designed: Level & Encounter Designer, Quip Generator, Balance/QA Reviewer
+ 
+- ✅ Token budget strategy resolved (two Claude Pro accounts)
+ 
+*This phase is genuinely done. Nothing below should require revisiting it — if you catch yourself wanting to re-open engine choice, agent count, or core mechanics, that’s scope-creep instinct to resist, not new information.*
+ 
+# Phase 1 — Player Controller + Animation (start here)
+ 
+**⚠️ Decision needed first: **Blueprint-via-Python-generated-graph vs. C++ authored by Claude Code and compiled by you. Given the proven Python bridge and current Blueprint-tutorial skill level, staying with Python-driven Blueprint construction is the consistent choice — confirm or override before Claude Code writes anything.
+ 
+**Animation note: **the sprite sheet (idle, walk, run, shoot, jump, hurt, sword attack) already exists as a one-off manual image-generation asset — a human gate per the GDD, not agent work. What’s still needed is turning that sheet into functioning in-engine animation: slicing frames into Paper2D flipbooks, and building the animation state machine (idle→walk→attack→hurt→dodge transitions) tied to controller inputs. This has to happen with the controller build below, not after — a huge part of "does this feel good" is animation feedback, not just collision and input response.
+ 
+- ☐ 1. Slice sprite sheet into Paper2D flipbooks (one per action: idle/walk/run/jump/shoot/hurt/sword)
+ 
+- ☐ 2. Move (left/right) + walk/run flipbook wired to movement speed
+ 
+- ☐ 3. Jump + jump flipbook
+ 
+- ☐ 4. Dodge with i-frames (animation may be a placeholder/reused frame if no dedicated dodge frames exist — flag this now if the sheet doesn’t have one)
+ 
+- ☐ 5. Sword attack (hitbox, animation trigger, timed to the attack flipbook)
+ 
+- ☐ 6. Gun fire (projectile or hitscan, animation trigger)
+ 
+- ☐ 7. Hurt animation triggered on taking damage
+ 
+- ☐ 8. Feel-test all four verbs, animated, before building anything else. If movement/combat doesn’t feel good here, nothing downstream matters — don’t proceed past this checkpoint until it does.
+ 
+# Phase 2 — Combat Foundation + Enemy Animation
+ 
+- ☐ 9. Damage system (health, hit reaction, death) on player
+ 
+- ☐ 10. Base enemy class (health, basic hit reaction, death) — one simple enemy type to test against
+ 
+- ☐ 11. Enemy sprite/animation asset needed — this doesn’t exist yet (the sheet you have is Death Metal Cat only). Decide now: separate manual image-gen pass for at least one enemy type, or a placeholder box until art time is budgeted.
+ 
+- ☐ 12. Enemy idle/hit/death flipbooks wired to the base enemy class
+ 
+- ☐ 13. Confirm sword and gun both correctly apply damage to the test enemy, with hit reaction visible
+ 
+# Phase 3 — Gnarly Ranking System
+ 
+- ☐ 14. Hit counter tied to landed sword/gun hits
+ 
+- ☐ 15. Tier thresholds (placeholder: 5/10/20/35 hits — tune once running)
+ 
+- ☐ 16. Full reset to zero on taking any hit
+ 
+- ☐ 17. Melee damage boost per tier (placeholder +5%/tier)
+ 
+- ☐ 18. On-screen rank meter/letter display
+ 
+# Phase 4 — RPG Attribute System
+ 
+- ☐ 19. XP value per enemy type, awarded on death
+ 
+- ☐ 20. Level-up trigger at XP thresholds
+ 
+- ☐ 21. Attribute point allocation UI (Speed/Strength/Dexterity/Defense)
+ 
+- ☐ 22. Wire attributes to actual effects: Speed→move speed, Strength→sword damage, Dexterity→gun damage, Defense→damage reduction
+ 
+# Phase 5 — Agent Execution (can run in parallel with Phases 1-4)
+ 
+*This is the **"**prove the agents actually work**"** phase — none have been executed yet, only designed.*
+ 
+- ☐ 23. Run Quip Generator first — no engine dependency, fastest proof of a working agent. Feed it a trigger type + tone spec, confirm it returns a usable text line + sound-bite tag in the JSON format specified.
+ 
+- ☐ 24. Run Level & Encounter Designer — feed it a difficulty curve + enemy roster, confirm it returns usable layout JSON.
+ 
+- ☐ 25. Run Balance/QA Reviewer against the Level Designer’s output — confirm it actually flags something meaningful, not just rubber-stamping the input.
+ 
+- ☐ 26. Write/confirm the Python import script that takes Level Designer JSON and places actors/tiles in UE5 via the Editor Scripting API — this turns agent output into an actual level.
+ 
+# Phase 6 — Level Construction
+ 
+- ☐ 27. Generate real level layout via Level & Encounter Designer (not placeholder data)
+ 
+- ☐ 28. Import via the Phase 5 script — platforms, enemy placement, pickups
+ 
+- ☐ 29. Wire up humor triggers using Quip Generator output (kill quips, damage barks, environment one-liners)
+ 
+- ☐ 30. Confirm pacing: player should build and lose Gnarly Rank at least twice across the level (design requirement from the GDD, Section 7)
+ 
+# Phase 7 — Polish Pass
+ 
+- ☐ 31. Hit-stop / screen shake on impactful hits
+ 
+- ☐ 32. Sound bite integration (not full VO — short stingers only)
+ 
+- ☐ 33. Playtest pass — this is a human-judgment step, not an agent task (per human gates in GDD Section 8.3)
+ 
+# Phase 8 — Course Deliverable Alignment
+ 
+Tie the build back to actual due dates so this doesn’t slip against the syllabus:
+ 
+| **Course item** | **Due** | **Depends on** |
+| --- | --- | --- |
+| GDD Final Draft (Assignment #2) | THU 7/23 | Already largely ready — refine after Phase 1-2 reveal any design gaps |
+| Build an Agent Crew (Assignment #3) | TUE 7/28 | Phase 5 (agents actually running) |
+| Dynamic Content Pipeline (Assignment #4) | THU 7/30 | Phase 5 (Quip Generator + Level Designer output count as your 3+ content types) |
+| Goal-Oriented Coding Agent (Assignment #5) | THU 8/6 | Separate assignment-specific build, not yet scoped in this outline |
+| Build a GER Pipeline (Assignment #6) | TUE 8/11 | Phase 5-6 (your GER pipeline IS this level-generation pipeline) |
+| Style Guide Agent (Assignment #7) | THU 8/13 | Not yet scoped — likely a 4th agent or an extension of Balance/QA Reviewer |
+| Complete AI Dev Pipeline (Assignment #10) | TUE 8/25 | Documentation of everything above, end to end |
+| Capstone: Final Playable Game | TUE 9/1 | All phases complete |
+ 
+# The One Rule for Using This Outline
+ 
+Work top to bottom. If something later in the list seems more interesting or you get new information from class, resist jumping ahead or re-opening earlier phases without a concrete reason tied to something that actually broke — not just new ideas. Phase 0 is the clearest example: it took two sessions to lock, and re-litigating engine/agent-count decisions cost real time that could’ve gone into Phase 1.

@@ -1,0 +1,85 @@
+# Session Summary — July 20, 2026
+
+**Project:** Death Metal Cat — 2D side-scrolling action capstone (continuing from July 18-19 session)
+
+## Carried in from previous session
+All five player verbs (Move, Jump, Dodge, Sword Attack, Gun Fire) were functionally complete, plus 
+a full damage system (health, tiered damage rolls, floating numbers, base enemy class) and Gnarly 
+Ranking system — all committed and verified as of the last session's close.
+
+## Accomplished this session
+
+**Dodge — final polish:**
+- Replaced the original 4-frame "narrative" dodge animation with a simpler, unambiguous 5-frame 
+  back-handspring sequence from a new sprite sheet, after several rounds of frame-index confusion 
+  on the old version.
+- Fixed per-frame timing (slowed initial pass, then tightened it back down per feedback) and 
+  fixed velocity-to-animation sync (impulse now fires in step with the wind-up frame, not before 
+  any visible motion).
+- Confirmed facing-lock still holds throughout the handspring (character doesn't visually flip 
+  toward the dodge's backward movement direction).
+
+**Gnarly Ranking — extended:**
+- Doubled tier thresholds (5/10/20/35 → 10/20/40/70) for better pacing across a full level.
+- Added a 5-stage escalating face-portrait HUD element (calm → glowing red eyes at max rank), 
+  explicitly pulled forward from the GDD's deferred v1-out-of-scope list as a deliberate, approved 
+  exception — logged as such.
+- Added a static "GNARLY RANK" title logo graphic above the live rank readout (aspect-ratio 
+  sizing issue noted, deferred to polish).
+
+**Damage system — extended and hardened:**
+- Confirmed sword hitbox's facing-mirror bug (from the previous session) had actually regressed — 
+  root-caused a second time via a visual debug overlay (arrow + box), confirmed fixed, debug 
+  tooling stripped.
+- **Found and fixed a previously-hidden bug: gun fire has been silently dealing zero damage since 
+  it was first built.** Root cause was two-layered: (1) the enemy's capsule collision was on the 
+  wrong Object Type, causing the hitscan trace to pass through it entirely; (2) after that fix, a 
+  second, deeper cause surfaced — the test enemy had significant Y-axis placement drift (116 
+  units) from being eyeballed into the 3D viewport, which a zero-thickness line trace has no 
+  tolerance for even after the collision fix.
+- Fixed both: added sphere-trace tolerance to the gun's hitscan (standard practice, forgives minor 
+  misalignment) AND added a BeginPlay plane-snap to the enemy base class that forces any enemy 
+  onto the exact same Y/Z plane as the player, regardless of how precisely it was placed in the 
+  editor — eliminating this entire class of bug for every future enemy, not just the one being 
+  tested.
+- Verified gun hits now correctly apply damage, show floating numbers, and feed the Gnarly hit 
+  counter (previously unconfirmed).
+
+**XP / Leveling system — new, built and verified:**
+- Deliberately simplified from an original interactive allocation-screen idea to an auto-apply 
+  system: XP per enemy kill (10 XP placeholder), flat level curve (Level × 50), auto stat 
+  increases to all four attributes per level (+2 each, tunable), banked (unspent) skill points 
+  for a future combo/special-move system that doesn't exist yet, level cap at 30.
+- Attribute effects wired: Speed→move speed, Strength→sword damage, Dexterity→gun damage, 
+  Defense→damage resistance (clamped at 90% max, never true invincibility).
+- Strength/Gnarly Rank multipliers confirmed to multiply together (not add), by design.
+- Added to the existing passive HUD (level + XP progress), reusing established widget patterns.
+- Verified via the same method as Gnarly Rank: direct before/after damage-number comparison across 
+  a level-up, not just trusting the level counter increased.
+
+**Testing infrastructure:**
+- Added auto-respawn to the base enemy class (configurable delay, resets to full health, returns 
+  to original spawn position) specifically to support repeated kill-testing for XP without manual 
+  re-placement — explicitly flagged as a testing convenience, not intended for the real capstone 
+  level as-is.
+
+**Process note:** GitHub had a real, confirmed multi-hour outage affecting Git LFS and Actions 
+overnight (July 19 23:34 UTC – July 20 04:44 UTC per GitHub's own status page) — work was 
+unaffected locally, commits simply waited until service was confirmed restored before pushing.
+
+## Known issues carried forward (logged in Build Outline, not yet fixed)
+- Jump flipbook's up/down pose blending — functional, not visually final (jump mechanic itself 
+  works correctly).
+- Jump Max Hold Time — left at engine default, untuned.
+- Gnarly Rank HUD font — functional default font, not final styling.
+- Gnarly Rank logo image — displays with incorrect aspect ratio (smushed), sizing fix deferred.
+- Gray-tint artifact on paw regions of the original (pre-green-screen) sprite pass — assessed as 
+  likely invisible at actual gameplay render scale, deferred to polish.
+- Combo system for Gnarly Ranking — explicitly a final-polish addition, not core scope.
+
+## Where this leaves the build outline
+Phases 1 (player verbs), 2 (damage system + enemy), and 3 (Gnarly Ranking) are complete and 
+verified. Phase 4 (RPG Attributes/XP) is functionally complete in its simplified form. Not yet 
+started: the actual capstone level (still using the test range), agent-driven level generation, 
+and the three roster agents from the GDD's Pillar 1 (Level & Encounter Designer, Quip Generator, 
+Balance/QA Reviewer) — none have been executed yet.

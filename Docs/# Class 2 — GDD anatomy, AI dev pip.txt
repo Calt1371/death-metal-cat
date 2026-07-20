@@ -1,0 +1,105 @@
+# Class 2 — GDD anatomy, AI dev pipeline, and agent roles
+ 
+Wed, 15 Jul 26
+ 
+### Class Overview and Agenda
+ 
+- Class 2: GDD Anatomy, Theory and Strategy
+- Focus: incorporating AI development pipelines into game design documents
+- Later this week: building first game prototype
+- Key outcomes:
+  - Define pillars for an AI-native GDD
+  - Assign agent roles using the dev crew model
+  - Complete Assignment 1 using provided templates
+  - Identify at least one logic gap via agentic red-teaming
+ 
+### Game Idea Scoping
+ 
+- Baseline rule: pick a game buildable without AI in a weekend or a week
+  - Ensures the gameplay loop is achievable before adding complexity
+  - Two-developer 48-hour test: if yes, it’s scopeable for AI-assisted dev
+- Scope grows forever; the designer’s job is to say no and cut back
+- Famous examples of minimal viable loops:
+  - Factorio: build things, process inputs/outputs, fight bugs; MVP in weeks
+  - Minecraft: mine and craft; original MVP built in roughly a day
+- Capstone game exercise: name it, describe what the player does in one sentence, identify unknowns
+ 
+### Three New Pillars of an AI-Native GDD
+ 
+- Pillar 1: AI Dev Pipeline
+  - Map how agents interact with the game engine
+  - Define agent inputs, outputs, and file formats (e.g., JSON for level data)
+  - Without this map, engine integration can break silently
+- Pillar 2: Technical Requirements and Constraints
+  - Define API limits, context window size, processing latency
+  - Identify human gates: tasks agents can’t do (e.g., asset creation, physics setup)
+  - Start from existing templates and packages rather than building from scratch
+- Pillar 3: Token Budgets and Projections
+  - Track token costs per session and per month
+  - Student Claude subscriptions being arranged via Elevator; expected within days
+  - Commercial viability matters: if AI builds the game but costs $1M, it’s not repeatable
+  - Enterprise scale uses API billing; even at small scale, budget awareness is essential
+ 
+### Dev Crew: Agent Roles
+ 
+- Every agent must be dedicated and specialized, not generalized
+- Agent roles formally documented in the GDD with defined inputs, outputs, and scope
+- Mirrors a real studio hierarchy:
+  - Graphic design agents, sound agents, research agents (finding asset packs)
+- Orchestration agent needed once agent count grows: routes tasks to the right specialist
+- Example agent roles for a dungeon crawler roguelite (Phaser + Claude):
+  - Floor generator: input seed + difficulty, output room layouts
+  - Enemy behavior: input player level + room JSON, output spawn configurations
+  - Loot narrator: input item name + rarity, output up to 40-word item description
+- Token budget example: 1,200 tokens per floor generation; 1,000 sessions/month estimated
+- If unsure what agents to create, ask the LLM directly: “What agents would help build this game?”
+ 
+### GDD Stress-Testing: Synthetic Audiences
+ 
+- Concept: use a multi-agent team to red-team the GDD before writing code
+  - Surfaces logic gaps, conflicts, and scope issues cheaply and early
+  - Much easier than playtesting a completed game
+- Demo: six-agent team run against the original Deus Ex GDD
+  - Agents: player psychologist, systems designer, narrative critic, feasibility lead, adversarial QA, business analyst
+  - Key findings:
+    - Recommended cutting scope by 70%; content volume mismatched team size of seven
+    - 48-hour augmentation timer creates unhandled fail states
+    - Act 3 linearity: “restrictive to players but branched enough to cost a lot to build”
+    - Multiplayer flagged as major risk; contractually obligated to ship it anyway
+  - Lesson: don’t mindlessly follow AI feedback; the “optimal ending” critique was debatable
+- Output: agent team can also generate structured asset specs from GDD descriptions
+  - If an agent can’t produce a spec, the description is too vague
+ 
+### Van Buren Case Study (Canceled Fallout 3 GDD)
+ 
+- Full AAA GDD released publicly when Black Isle shut down in December 2003
+- Strengths: detailed location templates, level layouts, lore, faction systems, dialog flow
+- Weaknesses: 29 pages for the first area alone; likely over-specified for an initial GDD
+- Scope: five major regions, 30 named NPCs, faction alignment axes, 30-40 hour runtime; never shipped
+- Lessons for capstone:
+  - GDD rigor is necessary but not sufficient; you still have to ship
+  - Developers who ship with AI pipelines had smaller scope, clear constraints, day-one pipelines
+  - Interplay’s financial collapse killed Van Buren, not the GDD quality
+- Practical use: AI can parse a GDD like this and generate Jira-style tickets for human or agent assignment
+ 
+### Assignment 1 and Q&A
+ 
+- Assignment 1: GDD first draft for your capstone game
+  - Due: July 21, submitted via course portal as PDF or HTML
+  - Required sections: summary, game mechanics, architecture, technical strategy (agent roles, token budgets, API constraints)
+  - All sections must describe your specific game, not a hypothetical
+- Rubric highlights:
+  - Game specificity (3 pts): named game, identifiable core loop, win/lose condition
+  - Player experience: describe what the player sees, not what the system computes
+  - Agent role definition: each agent named and explained in one plain-English sentence
+  - Realistic scope; required sections present and free of major errors
+- Q&A: agents vs. MD file skills
+  - Skills are called directly in a single session; agents run in parallel on dedicated tasks
+  - An agent can have skills but is scoped to one workstream while others run simultaneously
+ 
+### Next Steps
+ 
+- **Complete GDD first draft for capstone game** (Calvin)
+  - Due 21st July via course portal; must include summary, mechanics, architecture, and full technical strategy section with agent roles, token budgets, and API constraints.
+- **Download and review the Van Buren GDD and Deus Ex stress-test repo** (Calvin)
+  - Instructor will share the multi-agent pipeline scripts and repo link via Discord.

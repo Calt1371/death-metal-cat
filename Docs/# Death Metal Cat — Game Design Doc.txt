@@ -1,0 +1,146 @@
+# Death Metal Cat — Game Design Document (Draft v1)
+**Scope: Single capstone level, built for MAIGD1 course submission. Foundation for future full game.**
+
+---
+
+## 1. High Concept
+
+A fast-paced 2D side-scrolling action game combining Mega Man-speed movement, Devil May Cry-style combo/style-ranking combat, light RPG progression, and irreverent text-based humor. The player controls Death Metal Cat, fighting through a single level with sword and gun, building a "Gnarly" style rank through aggressive, hit-focused play.
+
+**Tone:** Loud, fast, funny. Humor is delivered through text and short sound bites — not voice acting. The game should feel mechanically tight first, funny second; jokes ride on top of good action, not instead of it.
+
+**Scope note:** This document covers ONE level only. Systems are built to be extensible but the deliverable is a single, complete, playable slice — not a vertical demo of everything the eventual full game will contain.
+
+---
+
+## 2. Core Gameplay Loop
+
+Move → Engage enemies with Sword / Gun → Dodge incoming attacks → Land hits to build Gnarly Rank → Rank increases melee damage → Defeat enemies for XP → Spend points on attributes → Reach level exit.
+
+---
+
+## 3. Player Verbs (v1 — locked, no additions without cutting something else)
+
+| Verb | Input | Notes |
+|---|---|---|
+| Move | Left/Right | Standard 2D lateral movement |
+| Jump | Jump button | Platforming traversal |
+| Sword Attack | Melee button | Primary damage, builds Gnarly Rank |
+| Gun Fire | Ranged button | Secondary damage, ranged option, uses Dexterity stat |
+| Dodge | Dodge button | Grants brief invincibility frames (i-frames); avoids Gnarly Rank reset |
+
+No combo canceling, no juggle system, no aerial combat variants in v1. These are explicitly **stretch goals for the post-capstone full game**, not this deliverable.
+
+---
+
+## 4. Gnarly Ranking System
+
+- Landing hits (sword or gun) accumulates hit-count toward the next rank.
+- Each rank requires a fixed number of accumulated hits to reach the next tier (placeholder: 10 / 20 / 40 / 70 hits for tiers 1–4, doubled from an earlier placeholder after initial testing showed the original numbers were too easy to hit).
+- **Getting hit by an enemy attack causes a full reset — all accumulated hit-progress and Gnarly Rank drop back to zero.** This is a deliberate high-risk/high-reward design choice: it rewards sustained, careful aggression and punishes mistakes hard. Design implication: enemy attacks must have clear, readable telegraphs so a rank loss reads as a player mistake, not an unfair hit — this is a hard requirement for enemy design in Section 7, not a nice-to-have.
+- Each rank tier grants a flat melee damage boost (placeholder: +5% per tier), verified via direct in-game damage comparison to confirm the multiplier is actually applied, not just displayed.
+- Rank display: on-screen meter/letter grade, visible at all times during combat, plus an escalating face-portrait HUD element (see exception noted in Section 9).
+- No other systemic effects (no music/visual escalation) in v1 — purely a damage-scaling mechanic tied to aggressive play. Visual/audio escalation is a stretch goal.
+
+---
+
+## 5. RPG Attribute System
+
+**Implementation note: simplified from the original design.** The original plan called for an interactive level-up screen where the player manually allocates points. This was deliberately simplified during build to avoid a whole separate UI paradigm (interactive widgets + input-focus switching between gameplay and menu) that the capstone timeline didn't have room for. The system below is what was actually built and verified.
+
+- Killing an enemy grants a fixed XP value (placeholder: 10 XP per kill).
+- XP required per level follows a simple flat curve (Level × 50) — no complex scaling curve.
+- On level-up, all four attributes automatically increase by a flat amount (placeholder: +2 each) — no manual allocation. Levels cap at 30.
+- Each level-up also banks Skill Points (placeholder: +1 per level) for a future combo/special-move system — these are tracked and stored but have no spend mechanic in v1. This preserves the original design's intent (points earned separately from stats) without requiring the interactive allocation UI.
+
+| Attribute | Effect |
+|---|---|
+| Speed | Movement speed |
+| Strength | Sword (melee) damage — multiplies with Gnarly Rank's damage bonus, not additive |
+| Dexterity | Gun (ranged) damage |
+| Defense | Damage resistance / reduction, clamped at 90% max (never true invincibility) |
+
+- No skill trees, no unlockable abilities in v1 — attribute points only affect existing stats.
+- UI: passive HUD readout (current level, XP progress) — not an interactive allocation screen.
+
+---
+
+## 6. Humor Delivery System
+
+- **Primary:** Text-based triggers — on-kill quips, damage-taken barks, environmental one-liners on trigger volumes/interactables.
+- **Secondary:** Short sound bites (stingers, not dialogue) for emphasis on key moments (level-up, rank-up, level completion).
+- No voice acting in v1.
+- Implementation note: this is the best candidate for AI-agent-generated content — an agent can draft large volumes of quip variants for a human pass/curation rather than requiring manual writing of every line.
+
+---
+
+## 7. Level Design Brief (Single Capstone Level)
+
+- One linear side-scrolling level, sequenced to introduce: basic movement/combat → first Gnarly Rank build-up opportunity → first level-up moment → a light difficulty/enemy-density spike near the end → level exit.
+- Enemy placement should be deliberately paced to let the player build and lose Gnarly Rank at least twice, demonstrating the system clearly for grading/demo purposes.
+- Full art/animation fidelity (Hollow Knight-tier) is NOT a v1 requirement — placeholder/greybox-to-stylized art is acceptable for the capstone; polish pass is a stretch goal if time allows.
+
+---
+
+## 8. Technical Approach (Agent-Driven Development)
+
+### 8.1 Engine & Bridge
+
+- **Engine:** Unreal Engine 5, Paper2D enabled for sprite sheet integration (idle, walk, run, shoot, jump, hurt, sword-attack frames).
+- **Agent bridge:** UE5's Python Editor Scripting API (`unreal` module), accessed via Remote Execution so Claude Code can drive the editor externally rather than requiring commands to be typed into the in-editor console by hand.
+- **Status: verified, not theoretical.** A command sent from Claude Code's terminal successfully logged output to the UE5 Output Log and spawned a visible actor (with a real transform) in the live level — confirmed July 15, 2026. This bridge is a working foundation, not a planned one.
+- Chosen over raw Blueprint editing (not directly agent-scriptable) and full C++ (steeper learning curve given current Blueprint-tutorial skill level).
+
+### 8.2 Agent Roster (Pillar 1 — AI Dev Pipeline)
+
+Three specialized agents, each scoped to a single workstream, feeding one shared build package. No orchestration agent — at this scale (single capstone level, three agents), manual routing between them is simpler and cheaper than building a fourth agent to manage the other three.
+
+| Agent | Plain-English description | Input | Output | Format |
+|---|---|---|---|---|
+| **Level & Encounter Designer** | Takes a difficulty curve and enemy roster and lays out where platforms, enemies, and pickups go across the level. | Level theme, difficulty curve, enemy roster | Platform layout, enemy placement, pickup placement | JSON, consumed by a Python import script that places actors/tiles via the UE5 Editor Scripting API |
+| **Quip Generator** | Writes a short line of in-character dialogue whenever the player lands a kill, takes damage, or triggers an environmental interaction. | Trigger type (kill/damage/environment), tone spec | One text line (≤40 words) + a tag identifying which short sound bite to play | JSON, keyed by trigger type |
+| **Balance/QA Reviewer** | Reads the level and encounter data and flags spots where the Gnarly Ranking risk curve or RPG attribute scaling looks broken. | Encounter JSON (from Level & Encounter Designer), player attribute progression curve | List of flagged risk spikes and scaling issues, with a one-line rationale each | JSON or plain-text report |
+
+**Data flow:** Level & Encounter Designer → Balance/QA Reviewer (reviews its output) → human accepts or sends back for revision. Quip Generator runs independently — no dependency on the other two.
+
+### 8.3 Technical Requirements & Constraints (Pillar 2)
+
+**Human gates — tasks these agents explicitly cannot do:**
+
+- **Sprite art creation.** The sprite sheet was produced by a single manual image-generation prompt, not a repeatable pipeline. It is not treated as an agent workstream.
+- **Sound implementation.** Quips are text plus short pre-made sound-bite tags; there is no voice acting, and placing audio files in the engine is a manual step.
+- **Physics/collision setup in UE5.** Manual — depends on hand-placed colliders and direct playtesting feedback the agents don't have access to.
+- **Final combat feel and tuning.** The Gnarly Ranking system's risk/reward tension (damage bonus stacks on consecutive hits, full reset on any hit taken) is a "does this feel fair and exciting" judgment call. The Balance/QA Reviewer can flag a numeric spike; it cannot judge whether the spike is fun.
+
+**Engine-side constraints:**
+- Agents run **offline, pre-build** — they generate JSON consumed by Python import scripts during Editor time, not live calls during gameplay. Python is not suited to time-critical runtime logic in UE5, so this avoids the runtime-performance problem entirely.
+
+### 8.4 Token Budgets & Projections (Pillar 3)
+
+- **Framing: Claude Pro subscription usage, not API billing.** Cost is tracked as sessions/usage against subscription limits, not dollar-per-token.
+- **Two accounts available:** a personally-owned Claude Pro subscription and a second Claude Pro subscription provided through the ELVTR course. Each account carries its own separate usage limit — when one account's limit is reached, work continues on the other rather than waiting for a reset. This is the project's practical cost-management strategy in place of a dollar-cost projection.
+- Claude Code supports this directly via separate config directories per account (`CLAUDE_CONFIG_DIR`), allowing clean switching between the two without credential conflicts.
+- Open sub-item: confirm with ELVTR whether the course-provided account has any usage restrictions (e.g., course-work-only) before relying on it for extended agent runs.
+
+### 8.5 Build Order
+
+1. Player controller (move/jump/dodge/sword/gun) — validate core feel first
+2. Damage system + base enemy class
+3. Gnarly Rank counter + damage scaling
+4. XP/attribute system + data table
+5. Level layout + enemy placement + humor triggers (agent-generated, per 8.2)
+6. Polish pass (juice: hit-stop, screen shake, sound)
+
+---
+
+## 9. Explicit Out-of-Scope (v1)
+
+- Combo canceling / juggle mechanics
+- Full voice acting
+- Skill trees / unlockable abilities
+- Multiple levels
+- Full hand-animated Hollow Knight-tier art
+- ~~Visual/audio escalation tied to Gnarly Rank~~ — **exception approved and implemented during build:** a 5-stage escalating face-portrait HUD element (calm → glowing red eyes at max rank) was added, since it reused already-built widget infrastructure at low implementation cost. This was a deliberate, considered exception to the original scope cut, not scope creep — logged as such at the time.
+- Interactive level-up attribute allocation screen — simplified to auto-apply stat increases per level (see Section 5) to avoid building a separate interactive-UI/input-focus-switching system this close to deadline.
+
+These are documented here specifically so grading and future company-game planning both have a clear record of what was deliberately deferred and why.

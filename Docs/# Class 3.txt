@@ -1,0 +1,89 @@
+# Class 3
+
+# GDD to prototype agent workshop 3
+ 
+Mon, 20 Jul 26
+ 
+### Session Overview
+ 
+- Topic: GDD to prototype agent workshop plus live demo
+- Focus: iterating on GDDs, stress testing with agents, and building a GDD live
+- Assignment 1 (initial prototype GDD) due next week; Assignment 2 (iterated final version) introduced today
+ 
+### GDD as a Living Document
+ 
+- GDD is never finished: cut, add, and update as the game evolves
+- Core mechanics must be clearly defined early; a clear vision makes it easier to say no to scope creep
+- Identify at least three design pillars; every feature decision should serve all three
+- Multiple GDD versions recommended:
+  - Short version (3-5 pages): human-readable, for pitching and sharing
+  - Long version: full system detail for development reference
+- For assignments, submit the short, human-readable prototype version
+ 
+### Stress Testing with Agent Review Crews
+ 
+- Agents can flag scope creep, missing mechanics, and logic gaps before any code is written
+- Example agent types for a review crew:
+  - Exploit hunter: surfaces geometry errors and problem areas
+  - Narrative consistency agent: checks gameplay against lore
+  - Pacing and flow agent: evaluates narrative arc and writing structure
+- Example logic gap agents can catch: gold cap of 200 when final boss requires 500 to unlock
+ 
+### Simulating Player Feedback with Synthetic Audiences
+ 
+- Agents can mentally play through game concepts and generate feedback before code exists
+- Use distinct AI personas (optimizer, explorer, casual player) to simulate different player types
+- Iterate rapidly: propose rule changes, simulate reactions, track whether scores improve
+- Agents are strong at:
+  - Finding logic gaps and mathematical inconsistencies
+  - Verifying a game mechanically works
+- Agents cannot replace humans for:
+  - Determining if a game is actually fun
+  - Emotional engagement and satisfaction
+  - Cultural context and social dynamics
+  - UX intuition (“does this menu make sense to a human?”)
+ 
+### Live GDD Demo: Mech Tactics Game
+ 
+- Concept: turn-based mech tactics game with backpack-hero-style equipment grids
+  - Items placed in a chassis grid; position and adjacency determine effects
+  - Roguelike structure: alternating combat phases and shop phases
+- Engine: Phaser (chosen for fast prototyping, web-based, low barrier)
+- Key design decisions made during demo:
+  - Permadeath with full game restart on loss (no legacy upgrades, keeps scope tight)
+  - Damage persists between rounds (attrition mechanic)
+  - On mech death, equipment is retained and returned to inventory (less punishing)
+  - No grid-based damage (adds complexity, slows gameplay, out of scope for prototype)
+- Three core pillars identified: tactics combat, inventory Tetris/equipment puzzle, roguelike run structure
+- Core loop: shop phase (buy items, repair mechs, prep loadout) → combat phase → rewards → repeat
+- Prototype GDD output: high-concept pitch fits one or two sentences; document is a starting point, not a finished spec
+ 
+### Scope and Prototyping Principles
+ 
+- Build the smallest testable version first; gray box prototypes are valid and valuable
+- Start with easy difficulty so playtesters can complete the game; tune difficulty later
+- Avoid scope-expanding ideas in the prototype phase (e.g., legacy upgrades, hundreds of hours of content)
+- Agents are like junior interns: capable but need very specific instructions to stay on track
+- Paper prototyping or tabletop runs can validate mechanics before writing a single line of code
+ 
+### Q&A Highlights
+ 
+- Two game ideas at once: build prototype GDDs for both; you’ll quickly discover which to prioritize
+- Using multiple AI models: valid and useful; Gemini popular for creative content, Claude strong for code; models can review each other’s output
+- GDD format: PDF, HTML, or doc all acceptable; HTML enables interactive visualizations and embedded mechanics demos
+- Converting existing notes to a GDD: paste all ideas into an AI and ask it to structure and synthetically test them; expect iteration
+- GDD vs. building: if you’re already iterating on mechanics, that’s often a better use of time than updating documentation
+- Submission for international students (e.g., New Zealand): no point deduction for timezone differences; note the time in the submission
+- Agent architecture section of GDD: deeper coverage of agent creation starts next week; for now, ask the AI what agents it would recommend and follow up with capability questions
+- Creative/non-coder students: lean into your strengths (animation, modeling); build something you enjoy; a game can be made with very little code
+ 
+### Next Steps
+ 
+- **Submit Assignment 1: initial prototype GDD**
+  - Due next week; 3-5 pages, human-readable, covering core concept and mechanics.
+- **Begin Assignment 2: iterate and finalize GDD**
+  - Incorporate agent feedback and playtester input to improve the initial draft.
+- **Use the shared GDD review agent repository to stress test your GDD**
+  - Repository was shared in a prior session; run your draft through the review agents before submitting.
+ 
+---

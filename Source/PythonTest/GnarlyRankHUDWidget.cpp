@@ -114,6 +114,22 @@ bool UGnarlyRankHUDWidget::Initialize()
 				UE_LOG(LogTemp, Error, TEXT("[GNARLY RANK] Failed to load portrait texture: %s"), GnarlyPortraitPaths[i]);
 			}
 		}
+
+		// Level/XP readout, below the rank text/portrait row -- reuses this same HUD widget rather
+		// than a separate one, per design.
+		LevelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("LevelText"));
+		FSlateFontInfo LevelFont = LevelText->GetFont();
+		LevelFont.Size = 20;
+		LevelText->SetFont(LevelFont);
+		LevelText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+
+		if (UCanvasPanelSlot* LevelTextSlot = RootCanvas->AddChildToCanvas(LevelText))
+		{
+			LevelTextSlot->SetAnchors(FAnchors(0.f, 0.f));
+			LevelTextSlot->SetAlignment(FVector2D(0.f, 0.f));
+			LevelTextSlot->SetPosition(FVector2D(30.f, 230.f));
+			LevelTextSlot->SetAutoSize(true);
+		}
 	}
 
 	RefreshDisplay();
@@ -134,38 +150,54 @@ void UGnarlyRankHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 
 void UGnarlyRankHUDWidget::RefreshDisplay()
 {
-	if (!RankText || !OwningCharacter)
+	if (!OwningCharacter)
 	{
 		return;
 	}
 
+	// -- Gnarly rank text + portrait --
 	const int32 CurrentRank = OwningCharacter->GnarlyRank;
 	const int32 CurrentHitCount = OwningCharacter->GnarlyHitCount;
 
-	if (CurrentRank == LastSeenRank && CurrentHitCount == LastSeenHitCount)
+	if (RankText && (CurrentRank != LastSeenRank || CurrentHitCount != LastSeenHitCount))
 	{
-		return;
+		LastSeenRank = CurrentRank;
+		LastSeenHitCount = CurrentHitCount;
+
+		const int32 ClampedRank = FMath::Clamp(CurrentRank, 0, UE_ARRAY_COUNT(GnarlyRankLetters) - 1);
+		const FString RankLetter = GnarlyRankLetters[ClampedRank];
+
+		const TArray<int32>& Thresholds = OwningCharacter->GnarlyRankThresholds;
+		const FString ProgressText = (CurrentRank < Thresholds.Num())
+			? FString::Printf(TEXT(" (%d/%d)"), CurrentHitCount, Thresholds[CurrentRank])
+			: TEXT(" (MAX)");
+
+		// No "GNARLY:" prefix -- the logo image above now conveys that; this shows just the
+		// changing part (e.g. "D (0/5)", "S (MAX)").
+		RankText->SetText(FText::FromString(FString::Printf(TEXT("%s%s"), *RankLetter, *ProgressText)));
+
+		// Portrait: direct 1:1 rank-to-texture mapping (all 5, ranks 0-4, exist -- no reuse needed).
+		if (PortraitImage && RankPortraitTextures.IsValidIndex(ClampedRank) && RankPortraitTextures[ClampedRank])
+		{
+			PortraitImage->SetBrushFromTexture(RankPortraitTextures[ClampedRank]);
+		}
 	}
-	LastSeenRank = CurrentRank;
-	LastSeenHitCount = CurrentHitCount;
 
-	const int32 ClampedRank = FMath::Clamp(CurrentRank, 0, UE_ARRAY_COUNT(GnarlyRankLetters) - 1);
-	const FString RankLetter = GnarlyRankLetters[ClampedRank];
+	// -- Level/XP -- gated independently of GnarlyRank/GnarlyHitCount above, since the two change
+	// on unrelated triggers (kills/hits vs. XP awards), but still driven from this same single
+	// polling function, not a separate/parallel update mechanism.
+	const int32 CurrentLevel = OwningCharacter->CurrentLevel;
+	const float CurrentXPValue = OwningCharacter->CurrentXP;
 
-	const TArray<int32>& Thresholds = OwningCharacter->GnarlyRankThresholds;
-	const FString ProgressText = (CurrentRank < Thresholds.Num())
-		? FString::Printf(TEXT(" (%d/%d)"), CurrentHitCount, Thresholds[CurrentRank])
-		: TEXT(" (MAX)");
-
-	// No "GNARLY:" prefix -- the logo image above now conveys that; this shows just the changing
-	// part (e.g. "D (0/5)", "S (MAX)").
-	RankText->SetText(FText::FromString(FString::Printf(TEXT("%s%s"), *RankLetter, *ProgressText)));
-
-	// Portrait: direct 1:1 rank-to-texture mapping (all 5, ranks 0-4, exist -- no reuse needed).
-	// Driven by the same CurrentRank read and the same "only update on actual change" gate above
-	// as the rank text/meter -- not a separate/parallel update path.
-	if (PortraitImage && RankPortraitTextures.IsValidIndex(ClampedRank) && RankPortraitTextures[ClampedRank])
+	if (LevelText && (CurrentLevel != LastSeenLevel || !FMath::IsNearlyEqual(CurrentXPValue, LastSeenXP)))
 	{
-		PortraitImage->SetBrushFromTexture(RankPortraitTextures[ClampedRank]);
+		LastSeenLevel = CurrentLevel;
+		LastSeenXP = CurrentXPValue;
+
+		const FString XPText = (CurrentLevel < OwningCharacter->MaxLevel)
+			? FString::Printf(TEXT("%d/%d XP"), FMath::RoundToInt(CurrentXPValue), FMath::RoundToInt(OwningCharacter->XPToNextLevel))
+			: TEXT("MAX");
+
+		LevelText->SetText(FText::FromString(FString::Printf(TEXT("LVL %d (%s)"), CurrentLevel, *XPText)));
 	}
 }

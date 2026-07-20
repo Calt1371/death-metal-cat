@@ -13,6 +13,7 @@
 #include "Components/BoxComponent.h"
 #include "DrawDebugHelpers.h"
 #include "CollisionQueryParams.h"
+#include "CollisionShape.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
 #include "DamageNumberActor.h"
@@ -80,6 +81,9 @@ void ADeathMetalCatCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	Health = MaxHealth;
+
+	RecalculateXPToNextLevel();
+	ApplyAttributeEffects();
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
@@ -319,11 +323,16 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 		return 0.f;
 	}
 
-	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	if (ActualDamage <= 0.f)
 	{
 		return ActualDamage;
 	}
+
+	// Defense attribute: percentage damage resistance, clamped so it can never reach 100% (which
+	// would read as literal invincibility once Defense grows large enough over many levels).
+	const float DefenseResistance = FMath::Clamp(Defense * DefenseResistPerPoint, 0.f, 0.9f);
+	ActualDamage *= (1.f - DefenseResistance);
 
 	Health = FMath::Max(0.f, Health - ActualDamage);
 
@@ -422,6 +431,55 @@ void ADeathMetalCatCharacter::ResetGnarlyRank()
 	GnarlyRank = 0;
 }
 
+void ADeathMetalCatCharacter::RecalculateXPToNextLevel()
+{
+	XPToNextLevel = CurrentLevel * XPPerLevelBase;
+}
+
+void ADeathMetalCatCharacter::ApplyAttributeEffects()
+{
+	// Speed is the only attribute applied as a cached/derived value rather than inline at its
+	// point of use -- Strength/Dexterity/Defense are read fresh each time in
+	// OnSwordHitboxBeginOverlap/FireShotTrace/TakeDamage instead.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		const float SpeedMultiplier = 1.f + (Speed * SpeedMultiplierPerPoint);
+		MoveComp->MaxWalkSpeed = MaxMoveSpeed * SpeedMultiplier;
+	}
+}
+
+void ADeathMetalCatCharacter::AddXP(float Amount)
+{
+	if (CurrentLevel >= MaxLevel)
+	{
+		// Capped -- no further XP gain or leveling past MaxLevel, per design.
+		return;
+	}
+
+	CurrentXP += Amount;
+
+	// While loop (not a single if): handles a single large XP award crossing more than one
+	// threshold at once, correctly applying every level-up's attribute/skill-point gains rather
+	// than just the first.
+	while (CurrentLevel < MaxLevel && CurrentXP >= XPToNextLevel)
+	{
+		CurrentXP -= XPToNextLevel;
+		++CurrentLevel;
+
+		Speed += AttributeGainPerLevel;
+		Strength += AttributeGainPerLevel;
+		Dexterity += AttributeGainPerLevel;
+		Defense += AttributeGainPerLevel;
+		SkillPoints += SkillPointsPerLevel;
+
+		RecalculateXPToNextLevel();
+		ApplyAttributeEffects();
+
+		UE_LOG(LogTemp, Warning, TEXT("[LEVEL UP] Level %d  Speed=%.1f Strength=%.1f Dexterity=%.1f Defense=%.1f SkillPoints=%d"),
+			CurrentLevel, Speed, Strength, Dexterity, Defense, SkillPoints);
+	}
+}
+
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 {
 	if (bIsAttacking)
@@ -515,15 +573,18 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	EDamageTier Tier;
 	float RolledDamage = RollDamage(SwordBaseDamage, Tier);
 
-	// GnarlyRank grants a melee-ONLY damage bonus, applied on top of the tier roll above (not
-	// replacing it) -- gun damage deliberately does NOT get this multiplier, see FireShotTrace.
+	// GnarlyRank and Strength both grant melee-ONLY damage bonuses, applied on top of the tier
+	// roll above (not replacing it). They MULTIPLY together (not add) -- keeps both systems
+	// meaningfully impactful rather than one diluting the other. Gun damage deliberately does NOT
+	// get either of these, see FireShotTrace.
 	const float GnarlyMultiplier = 1.f + (GnarlyRank * GnarlyRankMeleeDamageBonusPerRank);
-	RolledDamage *= GnarlyMultiplier;
+	const float StrengthMultiplier = 1.f + (Strength * StrengthMultiplierPerPoint);
+	RolledDamage *= GnarlyMultiplier * StrengthMultiplier;
 
 	const float DamageApplied = UGameplayStatics::ApplyDamage(OtherActor, RolledDamage, GetController(), this, UDamageType::StaticClass());
 
-	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s), dealt %.1f damage (tier=%d, GnarlyRank=%d, GnarlyMultiplier=%.2f)"),
-		*OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"), DamageApplied, (int32)Tier, GnarlyRank, GnarlyMultiplier);
+	UE_LOG(LogTemp, Warning, TEXT("Sword hitbox overlapped actor: %s (component: %s), dealt %.1f damage (tier=%d, GnarlyRank=%d, GnarlyMultiplier=%.2f, Strength=%.1f, StrengthMultiplier=%.2f)"),
+		*OtherActor->GetName(), OtherComp ? *OtherComp->GetName() : TEXT("<none>"), DamageApplied, (int32)Tier, GnarlyRank, GnarlyMultiplier, Strength, StrengthMultiplier);
 
 	if (DamageApplied > 0.f)
 	{
@@ -667,18 +728,30 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
 
+	// Swept as a small sphere, not a zero-thickness line -- confirmed root cause of gun fire
+	// whiffing against a correctly-aimed, correctly-collision-configured enemy: a raw line trace
+	// has zero tolerance for the target's Y-position exactly matching the trace's fixed Y-line,
+	// while a swept sphere (standard practice for hitscan weapons) tolerates a small margin. See
+	// GunTraceRadius's doc comment for more.
 	FHitResult Hit;
-	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, QueryParams);
+	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, ECC_Visibility,
+		FCollisionShape::MakeSphere(GunTraceRadius), QueryParams);
 
 	if (bHit && Hit.GetActor())
 	{
 		EDamageTier Tier;
 		// No GnarlyRank multiplier here -- deliberately melee-only per the GDD (see OnSwordHitboxBeginOverlap).
-		const float RolledDamage = RollDamage(GunBaseDamage, Tier);
+		// Dexterity applies the same multiplicative way Strength does on the sword -- gun has no
+		// second (Gnarly-style) multiplier to stack against right now, but this keeps the pattern
+		// consistent for if that changes later.
+		float RolledDamage = RollDamage(GunBaseDamage, Tier);
+		const float DexterityMultiplier = 1.f + (Dexterity * DexterityMultiplierPerPoint);
+		RolledDamage *= DexterityMultiplier;
+
 		const float DamageApplied = UGameplayStatics::ApplyDamage(Hit.GetActor(), RolledDamage, GetController(), this, UDamageType::StaticClass());
 
-		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit actor: %s at location %s, dealt %.1f damage (tier=%d)"),
-			*Hit.GetActor()->GetName(), *Hit.Location.ToString(), DamageApplied, (int32)Tier);
+		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit actor: %s at location %s, dealt %.1f damage (tier=%d, Dexterity=%.1f, DexterityMultiplier=%.2f)"),
+			*Hit.GetActor()->GetName(), *Hit.Location.ToString(), DamageApplied, (int32)Tier, Dexterity, DexterityMultiplier);
 
 		if (DamageApplied > 0.f)
 		{
@@ -807,10 +880,10 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 	else
 	{
 		UPaperFlipbook* DesiredFlipbook = IdleFlipbook;
-		const float Speed = FMath::Abs(Velocity.X);
-		if (Speed > KINDA_SMALL_NUMBER)
+		const float CurrentMoveSpeed = FMath::Abs(Velocity.X);
+		if (CurrentMoveSpeed > KINDA_SMALL_NUMBER)
 		{
-			DesiredFlipbook = (Speed >= WalkSpeedThreshold) ? RunFlipbook : WalkFlipbook;
+			DesiredFlipbook = (CurrentMoveSpeed >= WalkSpeedThreshold) ? RunFlipbook : WalkFlipbook;
 		}
 
 		if (DesiredFlipbook && DesiredFlipbook != CurrentFlipbook)

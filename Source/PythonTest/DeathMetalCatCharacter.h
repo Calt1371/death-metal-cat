@@ -189,7 +189,32 @@ protected:
 	 */
 	void ResetGnarlyRank();
 
+	/**
+	 * Recomputes XPToNextLevel from the current CurrentLevel via the flat CurrentLevel *
+	 * XPPerLevelBase curve. Called once in BeginPlay and again after every level-up in AddXP.
+	 */
+	void RecalculateXPToNextLevel();
+
+	/**
+	 * Re-derives attribute effects that aren't computed inline at their point of use elsewhere.
+	 * Currently just Speed -> CharacterMovementComponent::MaxWalkSpeed (Strength/Dexterity/Defense
+	 * are all applied inline in OnSwordHitboxBeginOverlap/FireShotTrace/TakeDamage instead, since
+	 * those need a fresh read each time rather than a cached derived value). Called once in
+	 * BeginPlay and again after every level-up in AddXP.
+	 */
+	void ApplyAttributeEffects();
+
 public:
+	/**
+	 * Awards Amount XP toward the next level. No-ops entirely once CurrentLevel has reached
+	 * MaxLevel (per design: XP gain and leveling both stop past the cap). Handles one or more
+	 * level-ups in a single call if Amount crosses more than one threshold at once; each level-up
+	 * increases all four attributes by AttributeGainPerLevel, banks SkillPointsPerLevel skill
+	 * points (stored only -- no spend/allocation system exists yet, that's a separate future task),
+	 * and re-derives attribute effects via ApplyAttributeEffects.
+	 */
+	void AddXP(float Amount);
+
 	// -- Input --
 
 	/** Mapping context applied to this character's EnhancedInput subsystem once it's possessed by a player controller. */
@@ -389,6 +414,91 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GnarlyRank", meta = (ClampMin = "0"))
 	float GnarlyRankMeleeDamageBonusPerRank = 0.05f;
 
+	// -- Leveling --
+	//
+	// Simplified XP/leveling: no interactive allocation screen. Every level-up auto-applies a flat
+	// increase to all four attributes below; SkillPoints is purely banked (counted, stored) for a
+	// future combo/special-move system that doesn't exist yet -- no spend/allocation UI in this pass.
+
+	/** Current level, starting at 1. Capped at MaxLevel -- XP gain and leveling both stop past the cap, see AddXP. */
+	UPROPERTY(BlueprintReadOnly, Category = "Leveling")
+	int32 CurrentLevel = 1;
+
+	/** Level cap. Placeholder value (30 per spec), tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Leveling", meta = (ClampMin = "1"))
+	int32 MaxLevel = 30;
+
+	/** Current banked XP toward the next level; consumed (via AddXP's threshold loop) as CurrentLevel increases. */
+	UPROPERTY(BlueprintReadOnly, Category = "Leveling")
+	float CurrentXP = 0.f;
+
+	/** XP required to advance from CurrentLevel to CurrentLevel+1 -- recomputed by RecalculateXPToNextLevel as CurrentLevel * XPPerLevelBase (a flat curve, not a complex one). */
+	UPROPERTY(BlueprintReadOnly, Category = "Leveling")
+	float XPToNextLevel = 50.f;
+
+	/** Scaling factor for the flat XPToNextLevel curve (CurrentLevel * this). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Leveling", meta = (ClampMin = "0"))
+	float XPPerLevelBase = 50.f;
+
+	/** Flat amount each of Speed/Strength/Dexterity/Defense increases by on every level-up. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Leveling", meta = (ClampMin = "0"))
+	float AttributeGainPerLevel = 2.f;
+
+	/** Skill points banked per level-up. Purely stored (SkillPoints below) -- no spend/allocation system exists yet. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Leveling", meta = (ClampMin = "0"))
+	int32 SkillPointsPerLevel = 1;
+
+	/** Banked skill points, incremented by SkillPointsPerLevel on every level-up. No spend/allocation UI in this pass -- for a future combo/special-move system. */
+	UPROPERTY(BlueprintReadOnly, Category = "Leveling")
+	int32 SkillPoints = 0;
+
+	// -- Attributes --
+	//
+	// Each starts at 0 (meaning "no bonus yet, purely earned via leveling") and grows by
+	// AttributeGainPerLevel per level-up. Effects are applied inline at their point of use
+	// (OnSwordHitboxBeginOverlap, FireShotTrace, TakeDamage) rather than cached, except Speed
+	// (see ApplyAttributeEffects) which drives CharacterMovementComponent::MaxWalkSpeed directly.
+
+	/** Move-speed attribute; final MaxWalkSpeed = MaxMoveSpeed * (1 + Speed * SpeedMultiplierPerPoint) -- see ApplyAttributeEffects. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float Speed = 0.f;
+
+	/** Move-speed multiplier scaling per Speed point. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float SpeedMultiplierPerPoint = 0.01f;
+
+	/**
+	 * Sword-damage attribute. Its multiplier (1 + Strength * StrengthMultiplierPerPoint) MULTIPLIES
+	 * with GnarlyRank's melee multiplier in OnSwordHitboxBeginOverlap (not additive) -- keeps both
+	 * systems meaningfully impactful rather than one diluting the other.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float Strength = 0.f;
+
+	/** Sword-damage multiplier scaling per Strength point. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float StrengthMultiplierPerPoint = 0.02f;
+
+	/**
+	 * Gun-damage attribute. Applied the same multiplicative way as Strength (RolledDamage *=
+	 * DexterityMultiplier in FireShotTrace) for consistency, even though gun currently has no
+	 * Gnarly-style second multiplier to stack against -- keeps the pattern ready if that changes.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float Dexterity = 0.f;
+
+	/** Gun-damage multiplier scaling per Dexterity point. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float DexterityMultiplierPerPoint = 0.02f;
+
+	/** Damage-resistance attribute: TakeDamage multiplies incoming damage by (1 - Defense * DefenseResistPerPoint), clamped so resistance can never reach 100%. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float Defense = 0.f;
+
+	/** Damage-resistance fraction per Defense point, before the 90%-resistance clamp in TakeDamage. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attributes", meta = (ClampMin = "0"))
+	float DefenseResistPerPoint = 0.01f;
+
 	// -- Sword Attack --
 
 	/**
@@ -437,9 +547,21 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
 	float FireCooldown = 0.3f;
 
-	/** Max hitscan line-trace distance in uu. Placeholder value, tune freely. */
+	/** Max hitscan trace distance in uu. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
 	float MaxTraceRange = 2000.f;
+
+	/**
+	 * Radius (uu) of the sphere swept along the hitscan trace, replacing what was originally a
+	 * zero-thickness line trace. A raw line trace has zero tolerance for the target's exact
+	 * Y-position matching the trace's fixed Y-line -- confirmed as the actual cause of gun fire
+	 * whiffing against a correctly-aimed, correctly-collision-configured enemy that was merely a
+	 * small amount off that exact line. A small sphere is standard practice for hitscan weapons
+	 * specifically to avoid needing pixel/unit-perfect aim alignment. Placeholder value (10-15uu
+	 * suggested), tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
+	float GunTraceRadius = 12.f;
 
 	/**
 	 * How long the quick draw pose (frame index 2) shows before the hold-fire loop takes over. Not

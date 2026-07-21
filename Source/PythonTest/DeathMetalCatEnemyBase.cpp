@@ -6,9 +6,28 @@
 #include "UObject/ConstructorHelpers.h"
 #include "DeathMetalCatCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/DamageType.h"
 
 ADeathMetalCatEnemyBase::ADeathMetalCatEnemyBase()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
+	// Same 2D side-scroller plane lock as ADeathMetalCatCharacter's own constructor -- this enemy
+	// now moves (straight-line chase toward the player), so it needs the same guarantee the player
+	// has of never drifting off the locked Y/Z gameplay plane, on top of the one-time BeginPlay
+	// snap onto that plane already in place below.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->bOrientRotationToMovement = false;
+		MoveComp->bConstrainToPlane = true;
+		MoveComp->SetPlaneConstraintNormal(FVector(0.f, 1.f, 0.f));
+		MoveComp->bSnapToPlaneAtStart = true;
+	}
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationRoll = false;
+
 	// The default "Pawn" collision profile (left otherwise untouched -- still blocks Pawn/Camera,
 	// still whatever else that profile does by default) ignores ECC_Visibility, which is the
 	// specific channel ADeathMetalCatCharacter::FireShotTrace's LineTraceSingleByChannel uses for
@@ -17,6 +36,12 @@ ADeathMetalCatEnemyBase::ADeathMetalCatEnemyBase()
 	// this one channel is changed to Block; the sword's hitbox uses a completely separate
 	// overlap-only component (SwordHitbox, on the player) and isn't affected by anything here.
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+
+	// Left enabled (not for this class's own use -- contact damage is gated by plain distance in
+	// Tick, not overlap events) because the player's SwordHitbox overlap-checks THIS capsule from
+	// its own side, and CanComponentsGenerateOverlap requires GetGenerateOverlapEvents() true on
+	// both components for that to fire at all.
+	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
 
 	PlaceholderMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderMesh"));
 	PlaceholderMesh->SetupAttachment(GetCapsuleComponent());
@@ -60,8 +85,10 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 	// CharacterMovementComponent's plane constraint (see ADeathMetalCatCharacter's constructor),
 	// so reading it here is safe regardless of whether the player's own BeginPlay has run yet --
 	// placement itself isn't touched by that constraint, only future movement is.
-	if (ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0))
+	if (ADeathMetalCatCharacter* PlayerCharacter = Cast<ADeathMetalCatCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
+		CachedPlayerCharacter = PlayerCharacter;
+
 		FVector Loc = GetActorLocation();
 		const FVector PlayerLoc = PlayerCharacter->GetActorLocation();
 		Loc.Y = PlayerLoc.Y;
@@ -82,6 +109,44 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 		if (DynamicMaterial)
 		{
 			DynamicMaterial->SetVectorParameterValue(TEXT("Color"), BaseColor);
+		}
+	}
+}
+
+void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (bIsDead || !CachedPlayerCharacter)
+	{
+		return;
+	}
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->MaxWalkSpeed = MoveSpeed;
+	}
+
+	const FVector MyLocation = GetActorLocation();
+	const FVector PlayerLocation = CachedPlayerCharacter->GetActorLocation();
+	const float DistanceToPlayer = FVector::Dist(MyLocation, PlayerLocation);
+
+	if (DistanceToPlayer <= DetectionRadius)
+	{
+		const float XDistance = PlayerLocation.X - MyLocation.X;
+		if (FMath::Abs(XDistance) > MeleeRange)
+		{
+			AddMovementInput(FVector(FMath::Sign(XDistance), 0.f, 0.f), 1.f);
+		}
+	}
+
+	if (DistanceToPlayer <= MeleeRange)
+	{
+		const float CurrentTime = GetWorld()->GetTimeSeconds();
+		if (CurrentTime - LastContactDamageTime >= ContactDamageCooldown)
+		{
+			UGameplayStatics::ApplyDamage(CachedPlayerCharacter, ContactDamage, GetController(), this, UDamageType::StaticClass());
+			LastContactDamageTime = CurrentTime;
 		}
 	}
 }
@@ -139,6 +204,11 @@ void ADeathMetalCatEnemyBase::HandleDeath()
 	// hitscan trace) in one call; SetActorHiddenInGame(true) covers rendering for every component.
 	SetActorHiddenInGame(true);
 	SetActorEnableCollision(false);
+
+	// Reset to the same far-negative sentinel LastContactDamageTime starts at, so a respawned
+	// enemy's first contact damages immediately rather than silently inheriting whatever cooldown
+	// window was still in progress from its previous life.
+	LastContactDamageTime = -1000.f;
 
 	// Force the hit-flash color back to resting immediately, and cancel its own pending
 	// clear-timer, rather than leaving a stale flash mid-transition into the hidden/respawn

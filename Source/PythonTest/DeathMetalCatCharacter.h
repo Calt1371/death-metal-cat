@@ -154,14 +154,32 @@ protected:
 
 	/**
 	 * Standard AActor::TakeDamage override. Ignores the hit entirely (no health change, no Hurt
-	 * animation) while CanTakeDamage() is false (i.e. mid-dodge i-frames). On a hit that lands:
-	 * deducts Health, plays HurtFlipbook briefly, and on reaching 0 logs "PLAYER DIED" and disables
-	 * further input via DisableInput(). No death/respawn flow yet -- a separate future task.
+	 * animation) while CanTakeDamage() is false (i.e. mid-dodge i-frames or the post-respawn
+	 * invuln window). On a hit that lands: deducts Health, plays HurtFlipbook briefly, and on
+	 * reaching 0 logs "PLAYER DIED" and calls HandleDeath (input disable + respawn timer).
 	 */
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
 	/** Timer callback: ends the brief Hurt animation beat, letting UpdateAnimation's normal Idle/Walk/Run/etc. logic resume. */
 	void ClearHurtState();
+
+	/**
+	 * Called once, from TakeDamage, the moment Health reaches 0 (GnarlyRank has already been reset
+	 * by that same TakeDamage call, same as any other landed hit -- see ResetGnarlyRank). Logs
+	 * "PLAYER DIED", disables input, and arms the respawn timer -- mirrors
+	 * ADeathMetalCatEnemyBase::HandleDeath, minus the hide/disable-collision step (the player stays
+	 * visible, playing out the Hurt pose TakeDamage already started).
+	 */
+	void HandleDeath();
+
+	/**
+	 * Timer callback from HandleDeath: resets Health to MaxHealth, restores InitialSpawnTransform,
+	 * clears bIsDead, re-enables input, and starts a brief post-respawn invincibility window (see
+	 * PostRespawnInvulnDuration) by reusing the exact same bIsInvincible/IFrameTimerHandle/
+	 * ClearInvincibility mechanism Dodge's i-frames use, so respawning doesn't immediately re-die
+	 * standing in the same spot.
+	 */
+	void HandleRespawn();
 
 	/**
 	 * Rolls a damage tier (WeaknessChance / CriticalChance, remainder is Normal) and returns
@@ -352,6 +370,22 @@ public:
 	/** How long HurtFlipbook shows after a hit lands before returning to normal animation. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float HurtDuration = 0.4f;
+
+	/** Fraction of MaxHealth (0-1) below which the HUD's low-health screen tint starts fading in -- 0 opacity right at this threshold, ramping smoothly to LowHealthTintMaxOpacity at Health == 0. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0", ClampMax = "1"))
+	float LowHealthThreshold = 0.25f;
+
+	/** Max opacity of the low-health screen tint, reached exactly at Health == 0. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0", ClampMax = "1"))
+	float LowHealthTintMaxOpacity = 0.5f;
+
+	/** How long (seconds) the player stays dead (input disabled) before auto-respawning at InitialSpawnTransform -- mirrors ADeathMetalCatEnemyBase::RespawnDelay. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	float RespawnDelay = 1.5f;
+
+	/** How long (seconds) CanTakeDamage() stays false right after respawning -- reuses Dodge's own i-frame mechanism (bIsInvincible/IFrameTimerHandle), just armed for this duration instead of IFrameDuration, so respawning doesn't immediately re-die standing in the same spot. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	float PostRespawnInvulnDuration = 1.0f;
 
 	/**
 	 * Chance [0-1] a damage roll lands on the Weakness tier (see RollDamage). Normal is the
@@ -592,8 +626,13 @@ private:
 
 	FTimerHandle HurtTimerHandle;
 
-	/** True once Health reaches 0; TakeDamage uses this to only log "PLAYER DIED" / call DisableInput once. */
+	/** True once Health reaches 0; TakeDamage uses this to only log "PLAYER DIED" / call HandleDeath once. Cleared by HandleRespawn. */
 	bool bIsDead = false;
+
+	FTimerHandle RespawnTimerHandle;
+
+	/** Actor transform cached in BeginPlay -- where HandleRespawn puts the character back after RespawnDelay. Mirrors ADeathMetalCatEnemyBase::InitialSpawnTransform. */
+	FTransform InitialSpawnTransform;
 
 	FTimerHandle DodgeTimerHandle;
 	FTimerHandle IFrameTimerHandle;

@@ -5,6 +5,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/Border.h"
+#include "Components/ProgressBar.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
 #include "DeathMetalCatCharacter.h"
@@ -24,6 +25,32 @@ namespace
 	};
 
 	const TCHAR* GnarlyLogoPath = TEXT("/Game/UI/GnarlyRank/T_GnarlyRank_Logo.T_GnarlyRank_Logo");
+
+	// Engine-provided 1x1 white texture -- tinted via UImage::SetColorAndOpacity to get a plain
+	// solid-color fill (health bar background/fill and the full-screen low-health tint) without
+	// needing a dedicated texture asset of our own.
+	const TCHAR* WhiteSquarePath = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
+
+	// Anchor point for the health-bar color gradient: Health% == this shows pure Yellow, blending
+	// toward Green above it and Red below it -- a smooth two-segment lerp, not a hard color-band
+	// snap (there's no discrete jump at any percentage, just a change in slope at this midpoint).
+	constexpr float HealthBarMidPercent = 0.5f;
+
+	FLinearColor LerpHealthBarColor(float HealthPercent)
+	{
+		const FLinearColor Green(0.15f, 0.8f, 0.2f);
+		const FLinearColor Yellow(0.95f, 0.85f, 0.1f);
+		const FLinearColor Red(0.85f, 0.1f, 0.1f);
+
+		if (HealthPercent >= HealthBarMidPercent)
+		{
+			const float Alpha = (HealthPercent - HealthBarMidPercent) / (1.f - HealthBarMidPercent);
+			return FMath::Lerp(Yellow, Green, Alpha);
+		}
+
+		const float Alpha = HealthPercent / HealthBarMidPercent;
+		return FMath::Lerp(Red, Yellow, Alpha);
+	}
 }
 
 bool UGnarlyRankHUDWidget::Initialize()
@@ -39,6 +66,28 @@ bool UGnarlyRankHUDWidget::Initialize()
 	{
 		UCanvasPanel* RootCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
 		WidgetTree->RootWidget = RootCanvas;
+
+		// Low-health tint: added FIRST, before anything else below, so every other element on this
+		// HUD paints on top of it instead of being obscured -- canvas children later in add-order
+		// render on top of earlier ones. Stretched to fill the whole screen (anchors 0,0 to 1,1,
+		// zero offsets) rather than a fixed position/size like everything else here. Starts fully
+		// transparent (alpha 0); RefreshDisplay drives its opacity from Health.
+		LowHealthTintImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("LowHealthTintImage"));
+		if (UTexture2D* WhiteTexture = LoadObject<UTexture2D>(nullptr, WhiteSquarePath))
+		{
+			LowHealthTintImage->SetBrushFromTexture(WhiteTexture);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[GNARLY RANK] Failed to load low-health tint texture: %s"), WhiteSquarePath);
+		}
+		LowHealthTintImage->SetColorAndOpacity(FLinearColor(0.4f, 0.02f, 0.02f, 0.f));
+
+		if (UCanvasPanelSlot* TintSlot = RootCanvas->AddChildToCanvas(LowHealthTintImage))
+		{
+			TintSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+			TintSlot->SetOffsets(FMargin(0.f));
+		}
 
 		// Static "GNARLY RANK" logo, above the dynamic text. Own UImage, not shared with
 		// PortraitImage -- set once here and never touched again in RefreshDisplay, unlike the
@@ -130,6 +179,34 @@ bool UGnarlyRankHUDWidget::Initialize()
 			LevelTextSlot->SetPosition(FVector2D(30.f, 230.f));
 			LevelTextSlot->SetAutoSize(true);
 		}
+
+		// Health bar, below the Level/XP row -- reuses this same HUD widget, same as Level/XP does.
+		HealthBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("HealthBar"));
+		HealthBar->SetPercent(1.f);
+
+		if (UCanvasPanelSlot* HealthBarSlot = RootCanvas->AddChildToCanvas(HealthBar))
+		{
+			HealthBarSlot->SetAnchors(FAnchors(0.f, 0.f));
+			HealthBarSlot->SetAlignment(FVector2D(0.f, 0.f));
+			HealthBarSlot->SetPosition(FVector2D(30.f, 270.f));
+			HealthBarSlot->SetSize(FVector2D(220.f, 24.f));
+			HealthBarSlot->SetAutoSize(false);
+		}
+
+		// Numeric readout, to the right of the bar rather than overlapping it.
+		HealthText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("HealthText"));
+		FSlateFontInfo HealthFont = HealthText->GetFont();
+		HealthFont.Size = 20;
+		HealthText->SetFont(HealthFont);
+		HealthText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+
+		if (UCanvasPanelSlot* HealthTextSlot = RootCanvas->AddChildToCanvas(HealthText))
+		{
+			HealthTextSlot->SetAnchors(FAnchors(0.f, 0.f));
+			HealthTextSlot->SetAlignment(FVector2D(0.f, 0.f));
+			HealthTextSlot->SetPosition(FVector2D(260.f, 270.f));
+			HealthTextSlot->SetAutoSize(true);
+		}
 	}
 
 	RefreshDisplay();
@@ -199,5 +276,46 @@ void UGnarlyRankHUDWidget::RefreshDisplay()
 			: TEXT("MAX");
 
 		LevelText->SetText(FText::FromString(FString::Printf(TEXT("LVL %d (%s)"), CurrentLevel, *XPText)));
+	}
+
+	// -- Health bar / text / low-health tint -- all three gated together since all three derive
+	// from these same two source values, unlike GnarlyRank/Level above which change independently.
+	const float CurrentHealth = OwningCharacter->Health;
+	const float CurrentMaxHealth = OwningCharacter->MaxHealth;
+
+	if (!FMath::IsNearlyEqual(CurrentHealth, LastSeenHealth) || !FMath::IsNearlyEqual(CurrentMaxHealth, LastSeenMaxHealth))
+	{
+		LastSeenHealth = CurrentHealth;
+		LastSeenMaxHealth = CurrentMaxHealth;
+
+		const float HealthPercent = (CurrentMaxHealth > 0.f) ? FMath::Clamp(CurrentHealth / CurrentMaxHealth, 0.f, 1.f) : 0.f;
+
+		if (HealthBar)
+		{
+			HealthBar->SetPercent(HealthPercent);
+			HealthBar->SetFillColorAndOpacity(LerpHealthBarColor(HealthPercent));
+		}
+
+		if (HealthText)
+		{
+			HealthText->SetText(FText::FromString(FString::Printf(TEXT("%d/%d"), FMath::RoundToInt(CurrentHealth), FMath::RoundToInt(CurrentMaxHealth))));
+		}
+
+		if (LowHealthTintImage)
+		{
+			const float LowHealthThreshold = OwningCharacter->LowHealthThreshold;
+
+			// 0 opacity right at the threshold, ramping linearly to LowHealthTintMaxOpacity at
+			// Health == 0 -- a smooth fade, not a hard snap-on, and it fades back out the same way
+			// as Health recovers back above the threshold.
+			float TintOpacity = 0.f;
+			if (LowHealthThreshold > 0.f && HealthPercent < LowHealthThreshold)
+			{
+				TintOpacity = (1.f - HealthPercent / LowHealthThreshold) * OwningCharacter->LowHealthTintMaxOpacity;
+			}
+
+			const FLinearColor CurrentTint = LowHealthTintImage->GetColorAndOpacity();
+			LowHealthTintImage->SetColorAndOpacity(FLinearColor(CurrentTint.R, CurrentTint.G, CurrentTint.B, TintOpacity));
+		}
 	}
 }

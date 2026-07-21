@@ -80,6 +80,11 @@ void ADeathMetalCatCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Where HandleRespawn puts the character back after dying -- unlike the enemy's own version of
+	// this cache, there's no plane-snap correction to interleave with here, so this can just be
+	// read straight off wherever the engine's default GameMode/PlayerStart flow actually placed us.
+	InitialSpawnTransform = GetActorTransform();
+
 	Health = MaxHealth;
 
 	RecalculateXPToNextLevel();
@@ -357,11 +362,7 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 	{
 		bIsDead = true;
 		UE_LOG(LogTemp, Error, TEXT("PLAYER DIED"));
-
-		// No death/respawn flow yet (separate future task) -- for now just stop taking further
-		// input. DisableInput blocks all bound Enhanced Input actions (movement, jump, dodge,
-		// sword, shoot) for this pawn without needing to add a bIsDead guard to every handler.
-		DisableInput(Cast<APlayerController>(GetController()));
+		HandleDeath();
 	}
 
 	return ActualDamage;
@@ -370,6 +371,41 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 void ADeathMetalCatCharacter::ClearHurtState()
 {
 	bIsHurt = false;
+}
+
+void ADeathMetalCatCharacter::HandleDeath()
+{
+	// DisableInput blocks all bound Enhanced Input actions (movement, jump, dodge, sword, shoot)
+	// for this pawn without needing to add a bIsDead guard to every handler. No hide/disable-
+	// collision step like the enemy's version of this -- the player stays visible, playing out the
+	// Hurt pose TakeDamage already started above, which reads fine as a placeholder death beat.
+	DisableInput(Cast<APlayerController>(GetController()));
+
+	GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ADeathMetalCatCharacter::HandleRespawn, RespawnDelay, false);
+}
+
+void ADeathMetalCatCharacter::HandleRespawn()
+{
+	SetActorTransform(InitialSpawnTransform);
+
+	// Stop any leftover fall/knockback velocity from carrying over through the teleport -- without
+	// this, dying mid-air (or mid-dodge-launch) would have the character immediately resume
+	// falling/sliding from the spawn point using whatever velocity they died with.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+	}
+
+	Health = MaxHealth;
+	bIsDead = false;
+
+	EnableInput(Cast<APlayerController>(GetController()));
+
+	// Brief invincibility so respawning doesn't immediately re-die standing in the same spot --
+	// reuses the exact same mechanism as Dodge's i-frames (bIsInvincible/IFrameTimerHandle/
+	// ClearInvincibility), just armed for PostRespawnInvulnDuration instead of IFrameDuration.
+	bIsInvincible = true;
+	GetWorldTimerManager().SetTimer(IFrameTimerHandle, this, &ADeathMetalCatCharacter::ClearInvincibility, PostRespawnInvulnDuration, false);
 }
 
 float ADeathMetalCatCharacter::RollDamage(float BaseDamage, EDamageTier& OutTier) const

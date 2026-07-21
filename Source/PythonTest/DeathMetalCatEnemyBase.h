@@ -7,6 +7,7 @@
 
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class ADeathMetalCatCharacter;
 
 /**
  * Base enemy class: Character-derived (capsule collision + movement component, for whatever
@@ -27,6 +28,25 @@ class UMaterialInstanceDynamic;
  * testing) without manually re-placing one in the level each time. This is purely a visual/state
  * reset: the death/XP-awarding logic in TakeDamage runs exactly once per kill regardless,
  * unaffected by however many times the enemy subsequently respawns.
+ *
+ * Minimal contact-attack behavior, deliberately no AI/pathfinding system: every Tick, if the
+ * player is within DetectionRadius (a plain 3D distance check, not vision/line-of-sight), this
+ * actor calls AddMovementInput straight toward the player's X position (the only axis that
+ * matters -- Y/Z are already locked to the player's plane, see the BeginPlay snap above) until
+ * within MeleeRange, then stops. Contact damage is gated purely on plain 3D distance to the
+ * player each Tick (distance <= MeleeRange), combined with ContactDamageCooldown -- deliberately
+ * NOT overlap-event-driven: the enemy and player capsules both use the stock "Pawn" collision
+ * profile, which is a Block/Block relationship (see UCharacterMovementComponent default pawn
+ * collision), so they can never actually generate a BeginOverlap/EndOverlap against each other in
+ * the first place -- an earlier revision of this class bound contact damage to the capsule's own
+ * OnComponentBeginOverlap/EndOverlap, which in practice only ever fired from the player's
+ * SwordHitbox (a separate, deliberately overlap-everything component) grazing the capsule
+ * mid-swing, misidentified as "player contact" since the check only compared OtherActor, not
+ * OtherComp. Distance-based gating avoids that whole class of collision-response mismatch.
+ * Damage applies via the same UGameplayStatics::ApplyDamage path everything else in this game
+ * uses; the player's own TakeDamage handles CanTakeDamage()/i-frames entirely, this class never
+ * checks or duplicates that. No attack animation in this pass -- contact is the whole attack,
+ * animation is a separate future task.
  */
 UCLASS()
 class PYTHONTEST_API ADeathMetalCatEnemyBase : public ACharacter
@@ -52,8 +72,35 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float RespawnDelay = 3.f;
 
+	/** Plain 3D distance (uu) within which this enemy notices the player and starts advancing -- not vision/line-of-sight, just a radius check. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float DetectionRadius = 800.f;
+
+	/** Straight-line advance speed (uu/s) toward the player once detected -- drives CharacterMovementComponent::MaxWalkSpeed; no pathfinding, just AddMovementInput along X. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float MoveSpeed = 200.f;
+
+	/**
+	 * Dual-purpose range (uu), checked every Tick: (1) the X-distance at which the enemy stops
+	 * advancing, so it doesn't overshoot past the player, and (2) the plain 3D distance within
+	 * which contact damage is allowed to apply (gated by ContactDamageCooldown). Deliberately the
+	 * same property for both -- "close enough to stop chasing" and "close enough to hit" are the
+	 * same concept for this minimal contact-attack enemy. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float MeleeRange = 100.f;
+
+	/** Damage applied to the player, via the existing ApplyDamage/TakeDamage path, whenever plain 3D distance to the player is within MeleeRange (gated by ContactDamageCooldown). The player's own CanTakeDamage()/i-frame check is not duplicated here. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float ContactDamage = 10.f;
+
+	/** Minimum seconds between contact-damage applications while continuously within MeleeRange of the player. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float ContactDamageCooldown = 1.0f;
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Timer callback: reverts the placeholder mesh's color from HitFlashColor back to BaseColor. */
 	void ClearHitFlash();
@@ -101,4 +148,11 @@ private:
 
 	/** True from the moment Health reaches 0 (TakeDamage) until HandleRespawn resets it. Guards against TakeDamage running again (and double-awarding XP) during the hidden/respawn window -- collision is disabled then, so this shouldn't normally be reachable, but it's a cheap, explicit guarantee rather than relying solely on that. */
 	bool bIsDead = false;
+
+	/** Cached once in BeginPlay via UGameplayStatics::GetPlayerCharacter -- same lookup already used there for the plane-snap, reused here for detection/chase/contact-damage each Tick instead of querying every frame. A plain UPROPERTY pointer, so it's automatically nulled by GC if the player is ever destroyed. */
+	UPROPERTY(Transient)
+	TObjectPtr<ADeathMetalCatCharacter> CachedPlayerCharacter;
+
+	/** World time (GetWorld()->GetTimeSeconds()) contact damage was last applied; compared against ContactDamageCooldown. Starts far enough negative that the very first contact always damages immediately; reset to that same sentinel in HandleDeath so a respawned enemy doesn't inherit a stale cooldown from its previous life. */
+	float LastContactDamageTime = -1000.f;
 };

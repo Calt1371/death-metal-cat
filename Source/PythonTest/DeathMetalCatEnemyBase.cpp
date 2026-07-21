@@ -188,6 +188,7 @@ float ADeathMetalCatEnemyBase::TakeDamage(float DamageAmount, FDamageEvent const
 		if (ADeathMetalCatCharacter* KillerCharacter = Cast<ADeathMetalCatCharacter>(DamageCauser))
 		{
 			KillerCharacter->AddXP(XPReward);
+			KillerCharacter->TriggerQuip(EQuipTriggerType::Kill);
 		}
 
 		HandleDeath();

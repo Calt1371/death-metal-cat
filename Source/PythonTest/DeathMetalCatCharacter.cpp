@@ -19,6 +19,7 @@
 #include "DamageNumberActor.h"
 #include "GnarlyRankHUDWidget.h"
 #include "Blueprint/UserWidget.h"
+#include "QuipLibrary.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -345,6 +346,8 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 	// high-risk/high-reward design per the GDD, not a bug.
 	ResetGnarlyRank();
 
+	TriggerQuip(EQuipTriggerType::Damage);
+
 	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
 	{
 		if (HurtFlipbook)
@@ -514,6 +517,87 @@ void ADeathMetalCatCharacter::AddXP(float Amount)
 		UE_LOG(LogTemp, Warning, TEXT("[LEVEL UP] Level %d  Speed=%.1f Strength=%.1f Dexterity=%.1f Defense=%.1f SkillPoints=%d"),
 			CurrentLevel, Speed, Strength, Dexterity, Defense, SkillPoints);
 	}
+}
+
+void ADeathMetalCatCharacter::TriggerQuip(EQuipTriggerType TriggerType)
+{
+	if (!QuipDataTable || !GnarlyRankHUDWidgetInstance)
+	{
+		return;
+	}
+
+	float* PerTypeLastTime = nullptr;
+	float PerTypeCooldown = 0.f;
+	switch (TriggerType)
+	{
+	case EQuipTriggerType::Kill:
+		PerTypeLastTime = &LastKillQuipTime;
+		PerTypeCooldown = QuipCooldown_Kill;
+		break;
+	case EQuipTriggerType::Damage:
+		PerTypeLastTime = &LastDamageQuipTime;
+		PerTypeCooldown = QuipCooldown_Damage;
+		break;
+	case EQuipTriggerType::Environment:
+		PerTypeLastTime = &LastEnvironmentQuipTime;
+		PerTypeCooldown = QuipCooldown_Environment;
+		break;
+	}
+
+	if (!PerTypeLastTime)
+	{
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+
+	// Both cooldown layers must pass -- the short GlobalQuipDebounce (shared across every trigger
+	// type) AND this type's own independent per-type cooldown. Neither is touched below unless a
+	// quip actually fires: a suppressed attempt must never consume/reset either timer.
+	if (CurrentTime - LastQuipShownTime < GlobalQuipDebounce)
+	{
+		return;
+	}
+
+	if (CurrentTime - *PerTypeLastTime < PerTypeCooldown)
+	{
+		return;
+	}
+
+	FString Line;
+	FString SoundTag;
+	if (!UQuipLibrary::GetRandomQuip(QuipDataTable, TriggerType, Line, SoundTag))
+	{
+		return;
+	}
+
+	*PerTypeLastTime = CurrentTime;
+	LastQuipShownTime = CurrentTime;
+	GnarlyRankHUDWidgetInstance->ShowQuip(Line, QuipDisplayDuration);
+}
+
+void ADeathMetalCatCharacter::TestQuip(const FString& TriggerTypeName)
+{
+	EQuipTriggerType TriggerType;
+	if (TriggerTypeName.Equals(TEXT("Kill"), ESearchCase::IgnoreCase))
+	{
+		TriggerType = EQuipTriggerType::Kill;
+	}
+	else if (TriggerTypeName.Equals(TEXT("Damage"), ESearchCase::IgnoreCase))
+	{
+		TriggerType = EQuipTriggerType::Damage;
+	}
+	else if (TriggerTypeName.Equals(TEXT("Environment"), ESearchCase::IgnoreCase))
+	{
+		TriggerType = EQuipTriggerType::Environment;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[QUIP] TestQuip: unrecognized trigger type '%s' -- expected Kill/Damage/Environment"), *TriggerTypeName);
+		return;
+	}
+
+	TriggerQuip(TriggerType);
 }
 
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)

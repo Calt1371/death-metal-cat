@@ -4,6 +4,7 @@
 #include "PaperCharacter.h"
 #include "TimerManager.h"
 #include "DamageTypes.h"
+#include "QuipTypes.h"
 #include "DeathMetalCatCharacter.generated.h"
 
 class UInputAction;
@@ -15,6 +16,7 @@ class UBoxComponent;
 class UPrimitiveComponent;
 class ADamageNumberActor;
 class UGnarlyRankHUDWidget;
+class UDataTable;
 struct FInputActionValue;
 struct FHitResult;
 
@@ -232,6 +234,22 @@ public:
 	 * and re-derives attribute effects via ApplyAttributeEffects.
 	 */
 	void AddXP(float Amount);
+
+	/**
+	 * Attempts to fire a Cayde quip line for TriggerType (see QuipTypes.h / QuipLibrary.h): pulls a
+	 * fully random matching row from QuipDataTable and pushes it to
+	 * GnarlyRankHUDWidgetInstance->ShowQuip, gated by TWO independent cooldown layers that must
+	 * BOTH pass -- the per-type cooldown (QuipCooldown_Kill/Damage/Environment, fully independent
+	 * per type) and the short GlobalQuipDebounce shared across all types (so two different trigger
+	 * types can't fire back-to-back). A suppressed or failed attempt (cooldown not yet elapsed, no
+	 * table, no matching row) never updates either LastQuipShownTime or the per-type timestamp --
+	 * only an actual fired quip consumes the cooldown.
+	 */
+	void TriggerQuip(EQuipTriggerType TriggerType);
+
+	/** Dev/testing console command (Exec) -- calls TriggerQuip for the named trigger type ("Kill"/"Damage"/"Environment", case-insensitive) so the two-layer cooldown system can be exercised manually from the in-game console without waiting for real kill/damage/environment events. */
+	UFUNCTION(Exec)
+	void TestQuip(const FString& TriggerTypeName);
 
 	// -- Input --
 
@@ -613,6 +631,32 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
 	float GunBaseDamage = 10.f;
 
+	// -- Quip --
+
+	/** Offline-imported Cayde quip lines (see QuipTypes.h / AgentScripts/ue_import_quip_datatable.py) -- points at /Game/Data/DT_Quips. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip")
+	TObjectPtr<UDataTable> QuipDataTable;
+
+	/** How long (seconds) a triggered quip stays fully visible in the dialogue box before fading -- passed straight through to UGnarlyRankHUDWidget::ShowQuip. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip", meta = (ClampMin = "0"))
+	float QuipDisplayDuration = 3.f;
+
+	/** Per-type cooldown (seconds) for Kill-triggered quips -- fully independent of the Damage/Environment cooldowns below. Placeholder value (5 min), tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip", meta = (ClampMin = "0"))
+	float QuipCooldown_Kill = 300.f;
+
+	/** Per-type cooldown (seconds) for Damage-triggered quips -- fully independent of the Kill/Environment cooldowns. Placeholder value (5 min), tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip", meta = (ClampMin = "0"))
+	float QuipCooldown_Damage = 300.f;
+
+	/** Per-type cooldown (seconds) for Environment-triggered quips -- fully independent of the Kill/Damage cooldowns. Placeholder value (5 min), tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip", meta = (ClampMin = "0"))
+	float QuipCooldown_Environment = 300.f;
+
+	/** Short debounce (seconds) shared across ALL trigger types, on top of each type's own cooldown above -- stops two DIFFERENT trigger types from firing back-to-back even if neither's own per-type cooldown has started yet. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip", meta = (ClampMin = "0"))
+	float GlobalQuipDebounce = 6.f;
+
 private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
@@ -670,6 +714,14 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UGnarlyRankHUDWidget> GnarlyRankHUDWidgetInstance;
+
+	/** GetWorld()->GetTimeSeconds() at the moment the most recently shown quip fired, regardless of its trigger type -- the GlobalQuipDebounce sentinel. Never updated by a suppressed/failed TriggerQuip attempt. */
+	float LastQuipShownTime = -1000.f;
+
+	/** Per-type last-fired timestamps for the QuipCooldown_Kill/Damage/Environment cooldowns -- fully independent of each other and of LastQuipShownTime above. */
+	float LastKillQuipTime = -1000.f;
+	float LastDamageQuipTime = -1000.f;
+	float LastEnvironmentQuipTime = -1000.f;
 
 	/**
 	 * Overlap-only hitbox for the sword swing, attached to the (unscaled) root rather than the

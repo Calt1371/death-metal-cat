@@ -8,6 +8,7 @@ class UTextBlock;
 class UCanvasPanel;
 class UImage;
 class UProgressBar;
+class UBorder;
 class UTexture2D;
 class ADeathMetalCatCharacter;
 
@@ -29,6 +30,15 @@ class ADeathMetalCatCharacter;
  * called out (root widget, or child of a panel) are demonstrated and verified here. The low-health
  * tint is added as the FIRST canvas child (before the logo) so every other element here paints on
  * top of it rather than being obscured.
+ *
+ * Also shows a JRPG-style dialogue box (portrait + name + quip line) for Cayde's Quip Generator
+ * lines (see QuipTypes.h / QuipLibrary.h). Unlike every other element on this HUD, the dialogue
+ * box is PUSH-driven rather than polled: ShowQuip() is called directly by
+ * ADeathMetalCatCharacter::TriggerQuip whenever a quip actually fires, since quips are one-shot
+ * random events, not continuously-readable character state the way Health/GnarlyRank/Level are.
+ * There is only ever one dialogue box instance (never spawned/destroyed per quip, consistent with
+ * this whole widget's philosophy), so retriggering while one is already showing just resets its
+ * timer and replaces the text -- it can never stack multiple boxes.
  */
 UCLASS()
 class PYTHONTEST_API UGnarlyRankHUDWidget : public UUserWidget
@@ -42,6 +52,15 @@ public:
 	/** Set once, right after CreateWidget -- this widget polls the character's GnarlyRank/GnarlyHitCount every tick rather than the character pushing updates via a delegate. */
 	void SetOwningCharacter(ADeathMetalCatCharacter* InCharacter);
 
+	/**
+	 * Displays Line in the JRPG-style dialogue box for DisplayDuration seconds before fading out
+	 * over QuipFadeDuration. Called directly (push, not polled) by
+	 * ADeathMetalCatCharacter::TriggerQuip. Calling this again while a quip is already showing
+	 * just resets the timer and swaps the text -- see this class's header comment for why that
+	 * can never stack multiple boxes.
+	 */
+	void ShowQuip(const FString& Line, float DisplayDuration);
+
 private:
 	/**
 	 * Polls the owning character and refreshes whichever sub-elements have actually changed since
@@ -54,6 +73,12 @@ private:
 	 * changes don't force unnecessary reformatting of the others.
 	 */
 	void RefreshDisplay();
+
+	/** Per-tick fade timing for the quip dialogue box -- see ShowQuip. No-ops entirely while bQuipShowing is false. */
+	void UpdateQuipFade();
+
+	/** Applies Alpha as the render opacity of every quip dialogue box element in one call -- QuipPortraitImage is deliberately excluded since it's nested inside QuipPortraitFrame via SetContent, and Slate render opacity already cascades to children. */
+	void SetQuipVisualsOpacity(float Alpha);
 
 	/** Static "GNARLY RANK" logo graphic (T_GnarlyRank_Logo), shown above RankText -- set once in Initialize() and never reassigned, unlike PortraitImage. */
 	UPROPERTY()
@@ -97,4 +122,35 @@ private:
 	/** Shared gate for HealthBar/HealthText/LowHealthTintImage -- all three derive from these same two values. */
 	float LastSeenHealth = -1.f;
 	float LastSeenMaxHealth = -1.f;
+
+	// -- Quip dialogue box --
+
+	/** Wide rounded dark panel behind the whole dialogue box (portrait + text together), so the two read as one connected element rather than two separate floating boxes. */
+	UPROPERTY()
+	TObjectPtr<UBorder> QuipBoxBackground;
+
+	/** Smaller rounded frame around QuipPortraitImage, nested via SetContent -- same "child of a content panel" attachment pattern as the Gnarly rank PortraitImage/PortraitBorder above. */
+	UPROPERTY()
+	TObjectPtr<UBorder> QuipPortraitFrame;
+
+	/** Cayde's dialogue portrait (T_CaydeDialoguePortrait) -- set once in Initialize() and never reassigned, there's only the one portrait. */
+	UPROPERTY()
+	TObjectPtr<UImage> QuipPortraitImage;
+
+	/** Small accent-colored "CAYDE" name label, above QuipLineText. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> QuipNameText;
+
+	/** The quip's own text -- larger, readable body text, word-wrapped within the box. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> QuipLineText;
+
+	/** True from ShowQuip until the fade-out finishes; UpdateQuipFade no-ops entirely while false. */
+	bool bQuipShowing = false;
+
+	/** GetWorld()->GetTimeSeconds() at the moment ShowQuip was last called. */
+	float QuipShowStartTime = 0.f;
+
+	/** How long (seconds) the current quip stays fully visible before UpdateQuipFade starts fading it out -- the DisplayDuration passed into the most recent ShowQuip call. */
+	float QuipDisplayDuration = 3.f;
 };

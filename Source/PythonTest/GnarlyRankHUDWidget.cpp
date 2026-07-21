@@ -8,6 +8,7 @@
 #include "Components/ProgressBar.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "DeathMetalCatCharacter.h"
 
 namespace
@@ -30,6 +31,15 @@ namespace
 	// solid-color fill (health bar background/fill and the full-screen low-health tint) without
 	// needing a dedicated texture asset of our own.
 	const TCHAR* WhiteSquarePath = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
+
+	// Cayde's dialogue portrait, imported by AgentScripts/ue_import_cayde_portrait.py.
+	const TCHAR* CaydePortraitPath = TEXT("/Game/UI/CaydeDialogue/T_CaydeDialoguePortrait.T_CaydeDialoguePortrait");
+
+	// How long (seconds) the quip dialogue box takes to fade out once QuipDisplayDuration has
+	// elapsed -- a widget-visual-styling constant like the font sizes/positions above, not a
+	// gameplay tunable, so it lives here rather than as a UPROPERTY (this widget has no Blueprint
+	// asset to edit defaults on anyway -- see this class's header comment).
+	constexpr float QuipFadeDuration = 0.5f;
 
 	// Anchor point for the health-bar color gradient: Health% == this shows pure Yellow, blending
 	// toward Green above it and Red below it -- a smooth two-segment lerp, not a hard color-band
@@ -207,6 +217,101 @@ bool UGnarlyRankHUDWidget::Initialize()
 			HealthTextSlot->SetPosition(FVector2D(260.f, 270.f));
 			HealthTextSlot->SetAutoSize(true);
 		}
+
+		// -- Cayde's JRPG-style dialogue box (portrait + name + quip line) -- the one element on
+		// this whole HUD anchored to the BOTTOM of the canvas: Anchors(0,1) is a bottom-left
+		// point-anchor (everything above uses a top-left point-anchor, Anchors(0,0)), so Position
+		// here is an offset up-and-right from the screen's bottom-left corner, not down-and-right
+		// from its top-left corner -- a negative Y moves an element UP off the bottom edge.
+		const float QuipBoxLeft = 40.f;
+		const float QuipBoxBottom = 40.f;
+		const float QuipBoxWidth = 760.f;
+		const float QuipBoxHeight = 160.f;
+		const float QuipPortraitSize = 140.f;
+		const float QuipPortraitPadding = 10.f;
+		const FLinearColor QuipAccentColor(0.95f, 0.75f, 0.2f, 1.f);
+
+		// One wide rounded panel behind BOTH the portrait and the text, rather than two separate
+		// bordered boxes placed side by side, so the two read as one connected element. Built with
+		// FSlateRoundedBoxBrush (a genuine rounded rect + accent-colored outline, no texture
+		// needed) rather than a background image asset, since no dedicated one exists for this.
+		QuipBoxBackground = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("QuipBoxBackground"));
+		QuipBoxBackground->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.05f, 0.05f, 0.05f, 0.92f), 14.0f, QuipAccentColor, 2.0f));
+
+		if (UCanvasPanelSlot* QuipBoxSlot = RootCanvas->AddChildToCanvas(QuipBoxBackground))
+		{
+			QuipBoxSlot->SetAnchors(FAnchors(0.f, 1.f));
+			QuipBoxSlot->SetAlignment(FVector2D(0.f, 1.f));
+			QuipBoxSlot->SetPosition(FVector2D(QuipBoxLeft, -QuipBoxBottom));
+			QuipBoxSlot->SetSize(FVector2D(QuipBoxWidth, QuipBoxHeight));
+			QuipBoxSlot->SetAutoSize(false);
+		}
+
+		// Portrait, framed the same "child of a content panel" way as the Gnarly rank portrait
+		// above (SetContent into a Border), just with a rounded brush instead of a plain color tint.
+		QuipPortraitFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("QuipPortraitFrame"));
+		QuipPortraitFrame->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.05f, 0.05f, 0.05f, 1.f), 10.0f, QuipAccentColor, 2.0f));
+		QuipPortraitFrame->SetPadding(FMargin(4.f));
+
+		QuipPortraitImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("QuipPortraitImage"));
+		if (UTexture2D* PortraitTexture = LoadObject<UTexture2D>(nullptr, CaydePortraitPath))
+		{
+			QuipPortraitImage->SetBrushFromTexture(PortraitTexture);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[QUIP] Failed to load Cayde portrait texture: %s"), CaydePortraitPath);
+		}
+		QuipPortraitFrame->SetContent(QuipPortraitImage);
+
+		if (UCanvasPanelSlot* QuipPortraitSlot = RootCanvas->AddChildToCanvas(QuipPortraitFrame))
+		{
+			QuipPortraitSlot->SetAnchors(FAnchors(0.f, 1.f));
+			QuipPortraitSlot->SetAlignment(FVector2D(0.f, 1.f));
+			QuipPortraitSlot->SetPosition(FVector2D(QuipBoxLeft + QuipPortraitPadding, -(QuipBoxBottom + QuipPortraitPadding)));
+			QuipPortraitSlot->SetSize(FVector2D(QuipPortraitSize, QuipPortraitSize));
+			QuipPortraitSlot->SetAutoSize(false);
+		}
+
+		// Text column starts right of the portrait: box left (40) + portrait padding (10) +
+		// portrait width (140) + a 15px gap = 205. Y positions are measured up from the box's own
+		// bottom edge (40): the name sits 15px below the box's top edge (200), the line just below
+		// the name.
+		QuipNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("QuipNameText"));
+		QuipNameText->SetText(FText::FromString(TEXT("CAYDE")));
+		FSlateFontInfo QuipNameFont = QuipNameText->GetFont();
+		QuipNameFont.Size = 16;
+		QuipNameText->SetFont(QuipNameFont);
+		QuipNameText->SetColorAndOpacity(FSlateColor(QuipAccentColor));
+
+		if (UCanvasPanelSlot* QuipNameSlot = RootCanvas->AddChildToCanvas(QuipNameText))
+		{
+			QuipNameSlot->SetAnchors(FAnchors(0.f, 1.f));
+			QuipNameSlot->SetAlignment(FVector2D(0.f, 0.f));
+			QuipNameSlot->SetPosition(FVector2D(205.f, -185.f));
+			QuipNameSlot->SetAutoSize(true);
+		}
+
+		// Larger, readable body text -- explicit Size + AutoWrapText (not AutoSize) so a long quip
+		// wraps within the box instead of overflowing it.
+		QuipLineText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("QuipLineText"));
+		FSlateFontInfo QuipLineFont = QuipLineText->GetFont();
+		QuipLineFont.Size = 20;
+		QuipLineText->SetFont(QuipLineFont);
+		QuipLineText->SetColorAndOpacity(FSlateColor(FLinearColor(0.92f, 0.92f, 0.9f)));
+		QuipLineText->SetAutoWrapText(true);
+
+		if (UCanvasPanelSlot* QuipLineSlot = RootCanvas->AddChildToCanvas(QuipLineText))
+		{
+			QuipLineSlot->SetAnchors(FAnchors(0.f, 1.f));
+			QuipLineSlot->SetAlignment(FVector2D(0.f, 0.f));
+			QuipLineSlot->SetPosition(FVector2D(205.f, -155.f));
+			QuipLineSlot->SetSize(FVector2D(575.f, 90.f));
+			QuipLineSlot->SetAutoSize(false);
+		}
+
+		// Hidden until the first ShowQuip call -- no quip has fired yet at HUD construction time.
+		SetQuipVisualsOpacity(0.f);
 	}
 
 	RefreshDisplay();
@@ -223,6 +328,77 @@ void UGnarlyRankHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	RefreshDisplay();
+	UpdateQuipFade();
+}
+
+void UGnarlyRankHUDWidget::ShowQuip(const FString& Line, float DisplayDuration)
+{
+	if (!QuipLineText)
+	{
+		return;
+	}
+
+	QuipLineText->SetText(FText::FromString(Line));
+	QuipDisplayDuration = DisplayDuration;
+	QuipShowStartTime = GetWorld()->GetTimeSeconds();
+	bQuipShowing = true;
+	SetQuipVisualsOpacity(1.f);
+}
+
+void UGnarlyRankHUDWidget::UpdateQuipFade()
+{
+	if (!bQuipShowing)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - QuipShowStartTime;
+	if (Elapsed >= QuipDisplayDuration + QuipFadeDuration)
+	{
+		bQuipShowing = false;
+		SetQuipVisualsOpacity(0.f);
+	}
+	else if (Elapsed >= QuipDisplayDuration)
+	{
+		const float FadeAlpha = 1.f - (Elapsed - QuipDisplayDuration) / QuipFadeDuration;
+		SetQuipVisualsOpacity(FMath::Clamp(FadeAlpha, 0.f, 1.f));
+	}
+}
+
+void UGnarlyRankHUDWidget::SetQuipVisualsOpacity(float Alpha)
+{
+	// RenderOpacity alone left a lingering artifact: QuipBoxBackground/QuipPortraitFrame's
+	// FSlateRoundedBoxBrush outline stayed faintly visible even at RenderOpacity 0 (a Slate
+	// rounded-box-outline quirk, not a logic bug -- this function was already applying opacity to
+	// the panels themselves, not just their text/image contents). Collapsing at Alpha == 0
+	// sidesteps that entirely: a Collapsed widget isn't painted or hit-tested at all, so there's
+	// nothing left to draw regardless of how the brush's outline handles opacity. RenderOpacity
+	// still drives the smooth fade itself while Alpha is between 0 and 1; Collapse is only the
+	// final, exact-zero state once the fade (or Initialize()'s initial hide) is complete.
+	const ESlateVisibility NewQuipVisibility = (Alpha > 0.f) ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+
+	// QuipPortraitImage is deliberately excluded -- it's nested inside QuipPortraitFrame via
+	// SetContent, and both render opacity and visibility already cascade to children.
+	if (QuipBoxBackground)
+	{
+		QuipBoxBackground->SetRenderOpacity(Alpha);
+		QuipBoxBackground->SetVisibility(NewQuipVisibility);
+	}
+	if (QuipPortraitFrame)
+	{
+		QuipPortraitFrame->SetRenderOpacity(Alpha);
+		QuipPortraitFrame->SetVisibility(NewQuipVisibility);
+	}
+	if (QuipNameText)
+	{
+		QuipNameText->SetRenderOpacity(Alpha);
+		QuipNameText->SetVisibility(NewQuipVisibility);
+	}
+	if (QuipLineText)
+	{
+		QuipLineText->SetRenderOpacity(Alpha);
+		QuipLineText->SetVisibility(NewQuipVisibility);
+	}
 }
 
 void UGnarlyRankHUDWidget::RefreshDisplay()

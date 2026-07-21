@@ -1,0 +1,180 @@
+{
+  "kill": [
+    {
+      "line": "Tch. Didn't even scratch me.",
+      "sound_tag": "snarl_low_03"
+    },
+    {
+      "line": "Hnnh. Stay down.",
+      "sound_tag": "growl_low_03"
+    },
+    {
+      "line": "MEOW. Next.",
+      "sound_tag": "growl_clipped_03"
+    },
+    {
+      "line": "Grrrgh. You picked the wrong alley.",
+      "sound_tag": "growl_menace_03"
+    },
+    {
+      "line": "Rrrgh -- that's what the claws are for.",
+      "sound_tag": "snarl_low_04"
+    },
+    {
+      "line": "Tch. I've stepped on worse.",
+      "sound_tag": "snarl_low_05"
+    },
+    {
+      "line": "Hnnh. Barely worth the effort...grrrgh.",
+      "sound_tag": "growl_dismissive_04"
+    },
+    {
+      "line": "Grrrgh. Should've run.",
+      "sound_tag": "snarl_low_06"
+    },
+    {
+      "line": "Hnnh. Light's out.",
+      "sound_tag": "growl_flat_07"
+    },
+    {
+      "line": "Tch. Didn't even bleed right.",
+      "sound_tag": "snarl_low_07"
+    },
+    {
+      "line": "Grrrgh. You had your shot. Wasted it.",
+      "sound_tag": "snarl_low_08"
+    },
+    {
+      "line": "Rrrgh -- I've buried better than you.",
+      "sound_tag": "snarl_low_09"
+    },
+    {
+      "line": "Tch. Now you're just scenery.",
+      "sound_tag": "snarl_low_10"
+    },
+    {
+      "line": "Hnnh. I've forgotten you already.",
+      "sound_tag": "growl_dismissive_05"
+    },
+    {
+      "line": "Rrrgh -- don't just lie there looking surprised.",
+      "sound_tag": "snarl_low_11"
+    }
+  ],
+  "damage": [
+    {
+      "line": "Hnnh. Still standing.",
+      "sound_tag": "grunt_hurt_03"
+    },
+    {
+      "line": "Tch. You'll have to do better than THAT.",
+      "sound_tag": "grunt_hurt_04"
+    },
+    {
+      "line": "Rrrgh -- I've had WORSE.",
+      "sound_tag": "grunt_hurt_05"
+    },
+    {
+      "line": "Grrrgh. Keep swinging -- you'll get tired before I do.",
+      "sound_tag": "grunt_hurt_06"
+    },
+    {
+      "line": "Rrrgh -- go ahead. HIT me again.",
+      "sound_tag": "grunt_hurt_07"
+    },
+    {
+      "line": "Tch. Barely felt it...grrrgh.",
+      "sound_tag": "grunt_hurt_08"
+    },
+    {
+      "line": "Hnnh. You hit like you're APOLOGIZING for it.",
+      "sound_tag": "grunt_hurt_09"
+    },
+    {
+      "line": "Hnnh. Pain's just noise...grrrgh.",
+      "sound_tag": "grunt_hurt_10"
+    },
+    {
+      "line": "Rrrgh. That all you got, or are you WARMING UP.",
+      "sound_tag": "grunt_hurt_11"
+    },
+    {
+      "line": "Hnnh. Took the hit. Still your problem.",
+      "sound_tag": "grunt_hurt_13"
+    },
+    {
+      "line": "Tch. Gonna take more than THAT to put me down...grrrgh.",
+      "sound_tag": "grunt_hurt_14"
+    },
+    {
+      "line": "Rrrgh -- good. Now we're EVEN.",
+      "sound_tag": "grunt_hurt_15"
+    },
+    {
+      "line": "Grrrgh. You scratched the WRONG cat.",
+      "sound_tag": "grunt_hurt_16"
+    }
+  ],
+  "environment": [
+    {
+      "line": "Water. Great. ...Grrrgh.",
+      "sound_tag": "dry_flat_03"
+    },
+    {
+      "line": "Tch. Something moved down there.",
+      "sound_tag": "dry_flat_04"
+    },
+    {
+      "line": "Dark in here. ...Good.",
+      "sound_tag": "dry_flat_05"
+    },
+    {
+      "line": "Tight squeeze. ...Works for me.",
+      "sound_tag": "dry_flat_06"
+    },
+    {
+      "line": "Hnnh. High ledge. ...I've fallen from worse.",
+      "sound_tag": "dry_flat_07"
+    },
+    {
+      "line": "Mud. ...Claws are gonna be filthy. Grrrgh.",
+      "sound_tag": "dry_flat_08"
+    },
+    {
+      "line": "Tch. Rain. ...I don't do rain.",
+      "sound_tag": "dry_flat_09"
+    },
+    {
+      "line": "Tch. Wind's picking up. ...Don't care.",
+      "sound_tag": "dry_flat_10"
+    },
+    {
+      "line": "Hnnh. Smells like rot and rust in here. ...Home enough.",
+      "sound_tag": "dry_flat_11"
+    },
+    {
+      "line": "Tch. Dead end... or a door. Only one way to find out.",
+      "sound_tag": "dry_flat_12"
+    },
+    {
+      "line": "Fire. ...Hate fire more than water. Maybe.",
+      "sound_tag": "dry_flat_13"
+    },
+    {
+      "line": "Hnnh. Something's watching me. ...Get in line.",
+      "sound_tag": "dry_flat_14"
+    },
+    {
+      "line": "Hnnh. Electric fence. ...Claws aren't insulated.",
+      "sound_tag": "dry_flat_15"
+    },
+    {
+      "line": "Hnnh. Flooded floor. ...Still moving through it.",
+      "sound_tag": "dry_flat_16"
+    },
+    {
+      "line": "Tch. Broken glass. ...Paws'll manage.",
+      "sound_tag": "dry_flat_17"
+    }
+  ]
+}

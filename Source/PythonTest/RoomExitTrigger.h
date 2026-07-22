@@ -13,7 +13,9 @@ struct FHitResult;
  * Placed at a room's exit doorway. The first time the player character overlaps this volume, it
  * fires ARoomProgressionManager::AdvanceToRoom(NextRoomID) and then never fires again (bHasFired
  * guard) -- redundant with NextRoomID's own room being deactivated behind the player anyway once
- * they've moved on, but cheap insurance against a same-frame double-overlap.
+ * they've moved on, but cheap insurance against a same-frame double-overlap. Re-armed via
+ * ResetTrigger() when ARoomProgressionManager::ResetToStartingRoom() runs on player death, so a
+ * second pass through an already-cleared room still fires correctly.
  *
  * Room3's branch choice is just two of these placed side by side (or stacked as an upper/lower
  * doorway) with NextRoomID set to Room4A on one and Room4B on the other -- whichever the player
@@ -31,6 +33,9 @@ public:
 	/** Which room this exit leads to. Set two of these to Room4A/Room4B on Room3's pair of exits to implement the branch choice. */
 	UPROPERTY(EditAnywhere, Category = "Room Progression")
 	ERoomID NextRoomID = ERoomID::Room2;
+
+	/** Clears bHasFired so this trigger can fire again -- called by ARoomProgressionManager::ResetToStartingRoom() on player death. */
+	void ResetTrigger();
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Room Progression")

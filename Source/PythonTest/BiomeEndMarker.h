@@ -23,6 +23,9 @@ class PYTHONTEST_API ABiomeEndMarker : public AActor
 public:
 	ABiomeEndMarker();
 
+	/** Clears bHasFired so this marker can fire again -- called by ARoomProgressionManager::ResetToStartingRoom() on player death. */
+	void ResetTrigger();
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Room Progression")
 	TObjectPtr<UBoxComponent> TriggerVolume;

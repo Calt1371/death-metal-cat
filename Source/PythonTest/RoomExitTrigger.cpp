@@ -37,3 +37,8 @@ void ARoomExitTrigger::OnTriggerBeginOverlap(UPrimitiveComponent* OverlappedComp
 	bHasFired = true;
 	Manager->AdvanceToRoom(NextRoomID);
 }
+
+void ARoomExitTrigger::ResetTrigger()
+{
+	bHasFired = false;
+}

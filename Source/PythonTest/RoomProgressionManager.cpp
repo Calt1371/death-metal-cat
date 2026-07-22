@@ -1,6 +1,8 @@
 #include "RoomProgressionManager.h"
 
 #include "RoomShell.h"
+#include "RoomExitTrigger.h"
+#include "BiomeEndMarker.h"
 #include "Kismet/GameplayStatics.h"
 
 ARoomProgressionManager::ARoomProgressionManager()
@@ -62,4 +64,35 @@ void ARoomProgressionManager::AdvanceToRoom(ERoomID NewRoomID)
 	CurrentRoomID = NewRoomID;
 
 	UE_LOG(LogTemp, Warning, TEXT("[ROOM PROGRESSION] %s -> %s"), *UEnum::GetValueAsString(PreviousRoomID), *UEnum::GetValueAsString(CurrentRoomID));
+}
+
+void ARoomProgressionManager::ResetToStartingRoom()
+{
+	AdvanceToRoom(StartingRoomID);
+
+	// Re-arm every one-shot exit trigger and the biome-end marker so a second pass through
+	// already-cleared rooms works -- AdvanceToRoom above only handles room activation/collision,
+	// not each trigger's own bHasFired latch from the original playthrough.
+	TArray<AActor*> FoundTriggers;
+	UGameplayStatics::GetAllActorsOfClass(this, ARoomExitTrigger::StaticClass(), FoundTriggers);
+	for (AActor* Actor : FoundTriggers)
+	{
+		if (ARoomExitTrigger* Trigger = Cast<ARoomExitTrigger>(Actor))
+		{
+			Trigger->ResetTrigger();
+		}
+	}
+
+	TArray<AActor*> FoundMarkers;
+	UGameplayStatics::GetAllActorsOfClass(this, ABiomeEndMarker::StaticClass(), FoundMarkers);
+	for (AActor* Actor : FoundMarkers)
+	{
+		if (ABiomeEndMarker* Marker = Cast<ABiomeEndMarker>(Actor))
+		{
+			Marker->ResetTrigger();
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[ROOM PROGRESSION] ResetToStartingRoom: back to %s, %d exit trigger(s) and %d biome marker(s) re-armed"),
+		*UEnum::GetValueAsString(StartingRoomID), FoundTriggers.Num(), FoundMarkers.Num());
 }

@@ -32,3 +32,8 @@ void ABiomeEndMarker::OnTriggerBeginOverlap(UPrimitiveComponent* OverlappedCompo
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("END OF BIOME (placeholder -- no boss yet)"));
 	}
 }
+
+void ABiomeEndMarker::ResetTrigger()
+{
+	bHasFired = false;
+}

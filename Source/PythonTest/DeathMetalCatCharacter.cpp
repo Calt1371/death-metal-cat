@@ -20,6 +20,7 @@
 #include "GnarlyRankHUDWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "QuipLibrary.h"
+#include "RoomProgressionManager.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -389,6 +390,12 @@ void ADeathMetalCatCharacter::HandleDeath()
 
 void ADeathMetalCatCharacter::HandleRespawn()
 {
+	// InitialSpawnTransform is cached once in BeginPlay from wherever the GameMode/PlayerStart
+	// flow actually placed this character -- confirmed to currently match RoomShell_ROOM1's own
+	// position exactly (both at the same X/Y/Z), so reusing it here for the full-biome restart is
+	// correct as long as PlayerStart and Room1's shell stay co-located. If they're ever
+	// deliberately separated, this should switch to looking up APlayerStart's live transform
+	// instead of trusting this cached snapshot.
 	SetActorTransform(InitialSpawnTransform);
 
 	// Stop any leftover fall/knockback velocity from carrying over through the teleport -- without
@@ -397,6 +404,16 @@ void ADeathMetalCatCharacter::HandleRespawn()
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->StopMovementImmediately();
+	}
+
+	// Death fully restarts the biome run, not just the player's own position -- rooms deactivate
+	// as the player advances, so without this a death in (say) Room6 would respawn the player at
+	// Room1 while Room2-6 stayed hidden/collision-disabled from the original pass, leaving them
+	// stuck. ResetToStartingRoom re-activates Room1 and re-arms every exit trigger so the whole
+	// sequence is walkable again from scratch.
+	if (ARoomProgressionManager* Manager = Cast<ARoomProgressionManager>(UGameplayStatics::GetActorOfClass(this, ARoomProgressionManager::StaticClass())))
+	{
+		Manager->ResetToStartingRoom();
 	}
 
 	Health = MaxHealth;

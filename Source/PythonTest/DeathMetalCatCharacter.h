@@ -54,7 +54,10 @@ protected:
 	/** Bound to the MoveRightAction; Value is a 1D axis in [-1, 1] (left .. right). */
 	void HandleMoveRight(const FInputActionValue& Value);
 
-	/** Bound to the JumpAction's Started event; just forwards to ACharacter::Jump(). */
+	/** Bound to the MoveRightAction's Completed/Canceled events: zeroes LastMoveRightAxisValue on release. Without this, releasing movement input leaves LastMoveRightAxisValue stuck at its last held (nonzero) value forever, since Triggered simply stops firing rather than reporting 0 -- DetectWallForSlide would then keep testing a stale, no-longer-held direction indefinitely. */
+	void HandleMoveRightReleased(const FInputActionValue& Value);
+
+	/** Bound to the JumpAction's Started event; wall-jumps (launch up and away from the wall, brief movement-input lockout) if currently wall-sliding, otherwise just forwards to ACharacter::Jump() as before. */
 	void HandleJump(const FInputActionValue& Value);
 
 	/** Bound to the DodgeAction's Started event; launches the character and starts the dodge/i-frame/frame-advance timers. */
@@ -90,6 +93,26 @@ protected:
 
 	/** Timer callback: ends the invincibility window (may outlast or be shorter than the dodge state itself). */
 	void ClearInvincibility();
+
+	/**
+	 * Called every Tick, before UpdateAnimation. Detects a slidable wall via DetectWallForSlide
+	 * and, only while airborne AND holding movement input toward that wall, clamps
+	 * MoveComp->Velocity.Z toward -WallSlideSpeed (rather than letting normal gravity fall speed
+	 * build up further) and sets bIsWallSliding/WallSlideFacingSign. Clears bIsWallSliding
+	 * whenever any of those conditions stop holding (grounded, no wall, input released/reversed).
+	 */
+	void UpdateWallSlide();
+
+	/**
+	 * Short forward sweep from the capsule, in the direction of LastMoveRightAxisValue's sign (so
+	 * it works facing either way) -- returns true and writes that sign to OutWallSign if it hits
+	 * something within WallCheckDistance. Returns false (OutWallSign left untouched) if no
+	 * movement input is currently held, or nothing was hit.
+	 */
+	bool DetectWallForSlide(float& OutWallSign) const;
+
+	/** Timer callback: ends the brief post-wall-jump movement-input lockout (see HandleJump/HandleMoveRight). */
+	void ClearWallJumpInputLock();
 
 	/** Bound to the SwordAttackAction's Started event; plays the swing and arms the hitbox timers. */
 	void HandleSwordAttack(const FInputActionValue& Value);
@@ -131,10 +154,25 @@ protected:
 	 */
 	void BeginHoldFireLoop();
 
-	/** The actual hitscan trace (unchanged logic from the original single-shot version), gated by
-	 * the FireCooldown cooldown. Purely gameplay -- the hold-fire loop's visuals are event-driven
-	 * separately via BeginHoldFireLoop()'s Play(), not tied per-shot to this call. */
+	/**
+	 * The actual hitscan trace, gated by the FireCooldown cooldown. Aims a straight horizontal
+	 * shot while grounded, or a fixed 45-degrees-downward shot (still respecting facing for the
+	 * horizontal component) whenever the character is airborne at the moment this fires --
+	 * checked fresh per shot, so jumping or landing mid-hold correctly changes the very next shot.
+	 * Damage/hit logic is otherwise identical between the two. Also calls UpdateHoldFireFlipbook
+	 * so the sustained loop animation (HoldFire vs. AirDownShot) stays in sync with that same
+	 * per-shot airborne check.
+	 */
 	void FireShotTrace();
+
+	/**
+	 * Sets the sustained hold-fire loop's flipbook to AirDownShotFlipbook (bAirborne true) or
+	 * HoldFireFlipbook (false), only reassigning/restarting playback when it actually needs to
+	 * change. Called once from BeginHoldFireLoop and again on every repeat shot from
+	 * FireShotTrace, so transitioning airborne state mid-hold (e.g. jumping while already firing)
+	 * updates the loop on the next shot rather than being stuck with whichever animation started it.
+	 */
+	void UpdateHoldFireFlipbook(bool bAirborne);
 
 	/** Sets the sprite to ShootFlipbook (once) and pins it to the given frame index, code-driven like Jump's. */
 	void SetShootFrame(int32 FrameIndex, const TCHAR* Reason);
@@ -332,6 +370,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> HurtFlipbook;
 
+	/** Shown looping while bIsWallSliding is true -- see UpdateWallSlide. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> WallSlideFlipbook;
+
+	/** Shown looping for the sustained hold-fire loop instead of HoldFireFlipbook whenever a shot fires while airborne -- see FireShotTrace/UpdateHoldFireFlipbook. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> AirDownShotFlipbook;
+
 	// -- Dodge --
 
 	/**
@@ -374,6 +420,36 @@ public:
 	/** Returns false while invincibility frames are active; TakeDamage() checks this and ignores any hit entirely while it's false. */
 	UFUNCTION(BlueprintCallable, Category = "Dodge")
 	bool CanTakeDamage() const;
+
+	// -- Wall Slide / Wall Jump --
+
+	/** Max downward fall speed (uu/s) while wall-sliding -- MoveComp->Velocity.Z is clamped toward -this instead of letting normal gravity fall speed build up further. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
+	float WallSlideSpeed = 150.f;
+
+	/** Short forward sweep distance (uu) from the capsule used to detect a wall to slide on, tried in whichever direction the player is currently holding movement input toward -- see DetectWallForSlide. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
+	float WallCheckDistance = 45.f;
+
+	/** Sweep sphere radius (uu) for the wall-detection trace above -- same "small sphere, not a zero-thickness line" tolerance reasoning as the gun's own hitscan trace, see GunTraceRadius. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
+	float WallCheckRadius = 10.f;
+
+	/** Outward (away from the wall) horizontal velocity component (uu/s) applied by a wall jump. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
+	float WallJumpForceHorizontal = 600.f;
+
+	/** Upward vertical velocity component (uu/s) applied by a wall jump. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
+	float WallJumpForceVertical = 700.f;
+
+	/** How long (seconds) movement input is ignored right after a wall jump, so the outward launch can't be instantly canceled by holding back toward the wall. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
+	float WallJumpInputLockDuration = 0.15f;
+
+	/** True while airborne, pressed against a detected wall, and holding movement input toward it -- see UpdateWallSlide. */
+	UPROPERTY(BlueprintReadOnly, Category = "WallSlide")
+	bool bIsWallSliding = false;
 
 	// -- Health / Damage --
 
@@ -681,6 +757,17 @@ private:
 	FTimerHandle DodgeTimerHandle;
 	FTimerHandle IFrameTimerHandle;
 	FTimerHandle DodgeFrameTimerHandle;
+
+	/** Cached from the most recent HandleMoveRight call regardless of whether that input was actually allowed to move the character -- DetectWallForSlide reads this to know which direction the player is holding toward. */
+	float LastMoveRightAxisValue = 0.f;
+
+	/** Which direction (matches Scale.X's sign convention) the wall currently being slid on is in -- set by UpdateWallSlide; also used to face the sprite into the wall and to know which way is "outward" for a wall jump. */
+	float WallSlideFacingSign = 1.f;
+
+	/** True for WallJumpInputLockDuration seconds after a wall jump; HandleMoveRight ignores all movement input while true. */
+	bool bWallJumpInputLocked = false;
+
+	FTimerHandle WallJumpInputLockTimerHandle;
 
 	/** Which of the 5 Dodge flipbook frames is currently showing; advanced by AdvanceDodgeFrame(). */
 	int32 DodgeCurrentFrame = 0;

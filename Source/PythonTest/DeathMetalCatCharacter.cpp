@@ -144,6 +144,8 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		if (MoveRightAction)
 		{
 			EnhancedInput->BindAction(MoveRightAction, ETriggerEvent::Triggered, this, &ADeathMetalCatCharacter::HandleMoveRight);
+			EnhancedInput->BindAction(MoveRightAction, ETriggerEvent::Completed, this, &ADeathMetalCatCharacter::HandleMoveRightReleased);
+			EnhancedInput->BindAction(MoveRightAction, ETriggerEvent::Canceled, this, &ADeathMetalCatCharacter::HandleMoveRightReleased);
 		}
 
 		if (JumpAction)
@@ -177,6 +179,18 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 
 void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 {
+	// Cached unconditionally, before any of the guards below -- DetectWallForSlide needs to know
+	// which direction the player is holding toward even on ticks where that input doesn't
+	// actually get to move the character (e.g. during the wall-jump input lockout just below).
+	LastMoveRightAxisValue = Value.Get<float>();
+
+	if (bWallJumpInputLocked)
+	{
+		// Brief window right after a wall jump where movement input is ignored entirely, so the
+		// outward horizontal launch can't be instantly canceled by holding back toward the wall.
+		return;
+	}
+
 	// Grounded + holding Shoot, or grounded + mid sword-swing: plant and ignore movement input --
 	// you can't realistically run while firing a held weapon or swinging for power. Airborne is
 	// exempted from both: jump momentum should carry through normally even mid-action, since
@@ -188,12 +202,31 @@ void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 		return;
 	}
 
-	const float AxisValue = Value.Get<float>();
-	AddMovementInput(FVector(1.f, 0.f, 0.f), AxisValue);
+	AddMovementInput(FVector(1.f, 0.f, 0.f), LastMoveRightAxisValue);
+}
+
+void ADeathMetalCatCharacter::HandleMoveRightReleased(const FInputActionValue& Value)
+{
+	LastMoveRightAxisValue = 0.f;
 }
 
 void ADeathMetalCatCharacter::HandleJump(const FInputActionValue& Value)
 {
+	if (bIsWallSliding)
+	{
+		// Launch up and away from the wall -- away from WallSlideFacingSign (the direction being
+		// held INTO the wall), not toward it. Same LaunchCharacter mechanism HandleDodge's own
+		// impulse uses, but with bZOverride true (not false like Dodge): a wall jump provides an
+		// explicit new vertical component too, replacing whatever fall velocity had built up,
+		// rather than preserving it the way Dodge preserves Z to not fight jump/fall arcs.
+		LaunchCharacter(FVector(-WallSlideFacingSign * WallJumpForceHorizontal, 0.f, WallJumpForceVertical), true, true);
+
+		bIsWallSliding = false;
+		bWallJumpInputLocked = true;
+		GetWorldTimerManager().SetTimer(WallJumpInputLockTimerHandle, this, &ADeathMetalCatCharacter::ClearWallJumpInputLock, WallJumpInputLockDuration, false);
+		return;
+	}
+
 	Jump();
 }
 
@@ -315,6 +348,67 @@ void ADeathMetalCatCharacter::ClearDodgeState()
 void ADeathMetalCatCharacter::ClearInvincibility()
 {
 	bIsInvincible = false;
+}
+
+void ADeathMetalCatCharacter::ClearWallJumpInputLock()
+{
+	bWallJumpInputLocked = false;
+}
+
+bool ADeathMetalCatCharacter::DetectWallForSlide(float& OutWallSign) const
+{
+	if (FMath::Abs(LastMoveRightAxisValue) < KINDA_SMALL_NUMBER)
+	{
+		// Not holding toward anything -- nothing to slide on regardless of what's nearby.
+		return false;
+	}
+
+	const float CheckSign = FMath::Sign(LastMoveRightAxisValue);
+	const FVector Start = GetActorLocation();
+	const FVector End = Start + FVector(CheckSign * WallCheckDistance, 0.f, 0.f);
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	// Same channel FireShotTrace's own hitscan already sweeps against (ECC_Visibility) and the
+	// same small-sphere-not-a-line tolerance reasoning as GunTraceRadius -- reusing a
+	// already-proven-working channel/shape combination rather than introducing a new one.
+	FHitResult Hit;
+	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, ECC_Visibility,
+		FCollisionShape::MakeSphere(WallCheckRadius), QueryParams);
+
+	if (!bHit)
+	{
+		return false;
+	}
+
+	OutWallSign = CheckSign;
+	return true;
+}
+
+void ADeathMetalCatCharacter::UpdateWallSlide()
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	const bool bAirborne = MoveComp && MoveComp->IsFalling();
+
+	float WallSign = 0.f;
+	const bool bWallDetected = bAirborne && DetectWallForSlide(WallSign);
+
+	if (!bWallDetected)
+	{
+		bIsWallSliding = false;
+		return;
+	}
+
+	bIsWallSliding = true;
+	WallSlideFacingSign = WallSign;
+
+	if (MoveComp->Velocity.Z < -WallSlideSpeed)
+	{
+		FVector Velocity = MoveComp->Velocity;
+		Velocity.Z = -WallSlideSpeed;
+		MoveComp->Velocity = Velocity;
+	}
 }
 
 bool ADeathMetalCatCharacter::CanTakeDamage() const
@@ -824,22 +918,34 @@ void ADeathMetalCatCharacter::BeginHoldFireLoop()
 {
 	ShootAnimPhase = EShootPhase::HoldFiring;
 
-	UPaperFlipbookComponent* SpriteComp = GetSprite();
-	if (SpriteComp && HoldFireFlipbook)
-	{
-		// Engine-driven looping playback, not manual SetPlaybackPositionInFrames jumping: this
-		// flipbook's own 4 frames already cycle through the muzzle-flash variations while staying
-		// fully extended, so there's no per-frame role for code to pick between anymore -- just
-		// let it play.
-		SpriteComp->SetFlipbook(HoldFireFlipbook);
-		SpriteComp->SetLooping(true);
-		SpriteComp->PlayFromStart();
-		CurrentFlipbook = HoldFireFlipbook;
-	}
+	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	UpdateHoldFireFlipbook(MoveComp && MoveComp->IsFalling());
 
 	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  BeginHoldFireLoop"), GetWorld()->GetTimeSeconds());
 
 	FireShotTrace();
+}
+
+void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne)
+{
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	if (!SpriteComp)
+	{
+		return;
+	}
+
+	// Engine-driven looping playback, not manual SetPlaybackPositionInFrames jumping: both rows'
+	// frames already cycle through their own variations (muzzle-flash / down-shot) while holding
+	// a consistent pose, so there's no per-frame role for code to pick between anymore -- just
+	// let whichever one applies play.
+	UPaperFlipbook* DesiredFlipbook = bAirborne ? AirDownShotFlipbook : HoldFireFlipbook;
+	if (DesiredFlipbook && CurrentFlipbook != DesiredFlipbook)
+	{
+		SpriteComp->SetFlipbook(DesiredFlipbook);
+		SpriteComp->SetLooping(true);
+		SpriteComp->PlayFromStart();
+		CurrentFlipbook = DesiredFlipbook;
+	}
 }
 
 void ADeathMetalCatCharacter::FireShotTrace()
@@ -859,8 +965,22 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	// change mid-hold correctly affects the next shot.
 	UPaperFlipbookComponent* SpriteComp = GetSprite();
 	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+
+	// Airborne re-checked fresh per shot (not cached from the start of the hold) so jumping or
+	// landing mid-hold correctly changes the very next shot, same as the facing check above.
+	// AirDownShotFlipbook is kept in sync with this same check via UpdateHoldFireFlipbook.
+	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	const bool bAirborneShot = MoveComp && MoveComp->IsFalling();
+	UpdateHoldFireFlipbook(bAirborneShot);
+
+	// Airborne: fixed 45 degrees downward, horizontal component still respecting facing (an
+	// aim-down-forward shot, not a pure vertical drop) -- grounded: unchanged pure horizontal.
+	const FVector FireDirection = bAirborneShot
+		? FVector(FacingSign, 0.f, -1.f).GetSafeNormal()
+		: FVector(FacingSign, 0.f, 0.f);
+
 	const FVector Start = GetActorLocation();
-	const FVector End = Start + FVector(FacingSign * MaxTraceRange, 0.f, 0.f);
+	const FVector End = Start + FireDirection * MaxTraceRange;
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
@@ -950,6 +1070,7 @@ void ADeathMetalCatCharacter::ClearShootingState()
 void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	UpdateWallSlide();
 	UpdateAnimation();
 }
 
@@ -992,6 +1113,16 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// The 5-frame handspring sequence is fully event-driven (HandleDodge / AdvanceDodgeFrame
 		// via SetDodgeFrame), not tick-based -- nothing to do here except make sure nothing else
 		// stomps it while a dodge is in progress.
+	}
+	else if (bIsWallSliding)
+	{
+		if (WallSlideFlipbook && CurrentFlipbook != WallSlideFlipbook)
+		{
+			SpriteComp->SetFlipbook(WallSlideFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->Play();
+			CurrentFlipbook = WallSlideFlipbook;
+		}
 	}
 	else if (bAirborne)
 	{
@@ -1040,6 +1171,15 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// if allowed to run here. Hold at whatever facing was captured the instant the dodge started.
 		FVector Scale = SpriteComp->GetRelativeScale3D();
 		Scale.X = DodgeFacingSignAtStart * FMath::Abs(Scale.X);
+		SpriteComp->SetRelativeScale3D(Scale);
+	}
+	else if (bIsWallSliding)
+	{
+		// Face INTO the wall (WallSlideFacingSign), not by velocity: Velocity.X is normally ~0
+		// while pressed against a wall (blocked), so the velocity-based flip below would have
+		// nothing reliable to go on here.
+		FVector Scale = SpriteComp->GetRelativeScale3D();
+		Scale.X = WallSlideFacingSign * FMath::Abs(Scale.X);
 		SpriteComp->SetRelativeScale3D(Scale);
 	}
 	else if (FMath::Abs(Velocity.X) > KINDA_SMALL_NUMBER)

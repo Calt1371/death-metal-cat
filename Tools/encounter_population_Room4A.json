@@ -1,0 +1,34 @@
+{
+  "room_id": "Room4A",
+  "populations": [
+    {
+      "marker_id": "SM_Room4A_0",
+      "population": "enemy",
+      "enemy_count": 1,
+      "rationale": "Tier 4 marks the start of the mid-game ramp. This first enemy marker gets a single enemy to ease the player into the room and give them a moment to build Gnarly Rank before pressure increases. Keeping it at 1 rather than the ceiling of 2 reflects that this is a branch_a room with traversal geometry (not pure combat), so density should climb gradually rather than spike immediately."
+    },
+    {
+      "marker_id": "SM_Room4A_1",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "After the opener, escalating this marker to the per-marker ceiling of 2 raises tension mid-room. This is the kind of two-enemy skirmish that can chip the player's health and reset a Gnarly Rank streak they built on SM_Room4A_0, contributing to the GDD Section 7 goal of at least two build-and-reset cycles across the run."
+    },
+    {
+      "marker_id": "SM_Room4A_2",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Tier 4 is a transition point where pickups become somewhat scarcer, but with combat pressure ramping up (2-enemy cluster at SM_Room4A_1) a single pickup here acts as a deliberate breather reward and helps the player sustain into the later markers without the room feeling unfairly punishing. Only one pickup marker exists in this room, so using it is appropriate."
+    },
+    {
+      "marker_id": "SM_Room4A_3",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Pushing to the ceiling of 2 again in the late portion of the room sustains the mid-tier ramp. This is where a player who recovered via the pickup faces renewed pressure, encouraging another Gnarly Rank build cycle before the room ends."
+    },
+    {
+      "marker_id": "SM_Room4A_4",
+      "population": "empty",
+      "rationale": "Leaving the final enemy marker empty serves two purposes: it prevents the room from hitting maximum density on every slot (which is reserved for Tiers 6-8 and pure combat-heavy rooms), and it provides a small release-valve moment at the room's exit so the player leaves with some Gnarly Rank intact rather than having it stripped at the last second, keeping momentum flowing into the next room."
+    }
+  ]
+}

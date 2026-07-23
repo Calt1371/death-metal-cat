@@ -1,0 +1,83 @@
+{
+  "room_id": "Room8",
+  "populations": [
+    {
+      "marker_id": "sm_01",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Tier 8 linear room opens with moderate pressure -- 3 enemies at the entry marker eases the player into the room's danger rather than spiking immediately, but is well above the low-end ceiling appropriate for early tiers. Contributes to Gnarly Rank building early in this encounter."
+    },
+    {
+      "marker_id": "sm_02",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Second marker escalates to the tier ceiling immediately after the opener. Tier 8 linear rooms should sustain near-maximum density throughout; hitting 4 here pushes the Gnarly Rank build aggressively and raises the chance of a reset if the player gets clipped, consistent with the second-half build-and-reset rhythm across the full run."
+    },
+    {
+      "marker_id": "sm_03",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Continued ceiling-level pressure. In a non-combat-heavy linear Tier 8 room, sustained max counts across sequential markers create the escalating danger GDD Section 7 demands near the biome end. No relief here -- player must play well to maintain Gnarly Rank."
+    },
+    {
+      "marker_id": "sm_04",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Slight dip to 3 provides a micro-beat of reduced pressure mid-room, giving the player a narrow window to recover Gnarly Rank momentum before the density climbs again. This prevents the room from feeling like a flat wall of enemies with no rhythm."
+    },
+    {
+      "marker_id": "sm_05",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Returns to ceiling after the brief 3-count dip. The oscillation between 3 and 4 creates a push-pull tension in Gnarly Rank -- skilled players who weren't hit during sm_04 can now be rewarded for their rank by facing a tougher cluster, while already-hurt players face real danger of a second rank reset here."
+    },
+    {
+      "marker_id": "sm_06",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Sustains ceiling pressure. Tier 8 biome-end rooms should feel relentless in their late stretch; back-to-back 4-count markers from sm_05 through sm_06 deliver that sensation without needing enemy variety."
+    },
+    {
+      "marker_id": "sm_07",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Ceiling maintained. At this point in the room the player should be deep into either a strong Gnarly Rank streak or recovering from a hit -- either way, sustained high density is the correct call for Tier 8 to ensure the run's second major rank-reset opportunity can occur in this late biome segment."
+    },
+    {
+      "marker_id": "sm_08",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Another brief 3-count breathing notch before the final push. Even at Tier 8, a completely flat density plateau risks feeling numbing rather than tense; this notch preserves the sense of ebb and flow while still sitting at a level that is punishing by any early-tier standard."
+    },
+    {
+      "marker_id": "sm_09",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Final surge begins. Returning to ceiling at sm_09 signals to the player that the room is entering its climactic section. Gnarly Rank that survived through sm_08 now faces maximum threat -- a hit here produces a meaningful rank reset near the room's end."
+    },
+    {
+      "marker_id": "sm_10",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Ceiling sustained in the climactic stretch. Two consecutive max-count markers (sm_09 and sm_10) concentrate danger and enemy overlap, making positioning critical and reinforcing the Tier 8 identity of this room."
+    },
+    {
+      "marker_id": "sm_11",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Ceiling maintained. The room's penultimate enemy cluster before the final marker; keeping it at 4 ensures there is no accidental relief that would undercut the tension built across the preceding markers."
+    },
+    {
+      "marker_id": "sm_12",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Final enemy marker hits the ceiling as a deliberate exclamation point on the room. Players who have maintained Gnarly Rank through the room are rewarded/tested here; players who reset earlier must survive this last dense cluster at a lower rank, reinforcing the build-and-reset cycle described in GDD Section 7."
+    },
+    {
+      "marker_id": "sm_13",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "The sole PickupSpawn marker is populated in a Tier 8 room because even late-game rooms benefit from one hard-won reward after surviving peak density -- it acknowledges player effort and provides a small buffer heading into whatever follows. GDD guidance notes pickups become scarcer late, so one pickup against 12 enemy markers represents that scarcity correctly. Pickup type is Generic per the current roster."
+    }
+  ]
+}

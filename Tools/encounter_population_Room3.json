@@ -1,0 +1,34 @@
+{
+  "room_id": "Room3",
+  "populations": [
+    {
+      "marker_id": "SM_01",
+      "population": "enemy",
+      "enemy_count": 1,
+      "rationale": "Tier 3 linear room: placing a single enemy at the first combat marker eases the player into this room's encounters. One enemy keeps pressure low, allowing Gnarly Rank to build without immediately risking a reset -- supporting the early-run rhythm where the player needs opportunities to accumulate rank before a meaningful hit resets it."
+    },
+    {
+      "marker_id": "SM_02",
+      "population": "empty",
+      "rationale": "Tier 3 calls for a meaningful fraction of enemy markers to be left empty. Leaving SM_02 unpopulated creates a natural breather beat between SM_01 and SM_04, preventing the early game from feeling relentlessly pressured and giving the Gnarly Rank a moment to hold before the next threat."
+    },
+    {
+      "marker_id": "SM_03",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Early tiers weight pickups to appear frequently since the player has the smallest health/attribute buffer. SM_03 is a PickupSpawn marker placed mid-room, rewarding exploration and helping sustain the run before difficulty meaningfully escalates in tiers 4+."
+    },
+    {
+      "marker_id": "SM_04",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "SM_04 provides the room's main challenge spike -- two enemies at the ceiling for tier 3. This is still forgiving by later-run standards but gives the player a real chance to see their Gnarly Rank threatened or reset, which is necessary for the whole-run goal of at least two build-and-reset cycles across the playthrough."
+    },
+    {
+      "marker_id": "SM_05",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Placing a pickup at the exit-side PickupSpawn rewards the player for clearing SM_04's tougher encounter and helps restore any buffer lost there. At tier 3 pickups should be relatively generous, and a post-combat reward here reinforces the early-game pacing contract before the mid-tier ramp begins."
+    }
+  ]
+}

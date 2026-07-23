@@ -1,0 +1,22 @@
+{
+  "room_id": "Room2",
+  "populations": [
+    {
+      "marker_id": "spawn_001",
+      "population": "empty",
+      "rationale": "Tier 2 is early and forgiving; leaving this EnemySpawn empty keeps the room sparse, giving the player room to breathe and learn movement before pressure ramps. An empty first slot also means the Gnarly Rank has not yet been stress-tested here, preserving its build-up potential for later rooms where resets become meaningful to the pacing rhythm."
+    },
+    {
+      "marker_id": "spawn_002",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Early-tier rooms should weight pickups toward appearing, since the player has the least health and attribute buffer at this stage. Placing a Generic pickup here rewards exploration and provides a small cushion before the first enemy contact in this room, consistent with GDD Section 7's guidance on early generosity."
+    },
+    {
+      "marker_id": "spawn_003",
+      "population": "enemy",
+      "enemy_count": 1,
+      "rationale": "A single enemy at the tier ceiling of 1 gives the room a light combat moment without overwhelming a Tier 2 player. Coming after an empty slot and a pickup, this lone enemy serves as a gentle introduction to the contact-damage threat, allowing Gnarly Rank to begin building without an immediate hard reset risk -- setting up the rhythm of accumulation that will be tested more seriously in Tiers 4 and beyond."
+    }
+  ]
+}

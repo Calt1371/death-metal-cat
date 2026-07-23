@@ -1,0 +1,28 @@
+{
+  "room_id": "Room1",
+  "populations": [
+    {
+      "marker_id": "spawn_0",
+      "population": "empty",
+      "rationale": "Tier 1 opening room should be gentle and welcoming. Leaving the first enemy slot empty gives the player a moment to orient themselves before any threat appears, supporting the GDD's 'forgiving' early design. This also means the Gnarly Rank meter won't even begin building until later, preserving the first build-and-reset rhythm for a more meaningful moment deeper in the run."
+    },
+    {
+      "marker_id": "spawn_1",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Tier 1 pickups are weighted to appear because the player has the smallest health/attribute buffer at the start of the run. Filling this PickupSpawn rewards early exploration and helps the player absorb any damage taken from their first encounter."
+    },
+    {
+      "marker_id": "spawn_2",
+      "population": "enemy",
+      "enemy_count": 1,
+      "rationale": "Introducing a single enemy at the second EnemySpawn slot gives the player their first controlled combat moment after they've had time to settle in. One enemy at the tier ceiling (1) is exactly right for a tier-1 linear room -- it introduces the melee contact-damage threat without overwhelming, letting the player begin building Gnarly Rank for the first time in the run."
+    },
+    {
+      "marker_id": "spawn_3",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "A second pickup near the end of the room acts as a small reward for clearing the single enemy and completing this introductory space. Tier 1 is the appropriate place to be generous with pickups; their value diminishes as the player gains attributes, so front-loading them here is consistent with the difficulty curve."
+    }
+  ]
+}

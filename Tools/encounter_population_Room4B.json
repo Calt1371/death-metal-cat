@@ -1,0 +1,70 @@
+{
+  "room_id": "Room4B",
+  "populations": [
+    {
+      "marker_id": "SM_Room4B_01",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Tier 4 combat-heavy branch room calls for density at or above the normal tier ceiling. Opening marker uses 2 enemies to signal immediately that this is a fight room, not a breather \u2014 enough to start pressuring the player's Gnarly Rank build without front-loading the full ceiling."
+    },
+    {
+      "marker_id": "SM_Room4B_02",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Second enemy marker escalates to the ceiling of 3. The pure-combat-room flag means density should sit at or above normal tier ceiling; pushing to 3 here early in the room creates the first real pressure spike that can begin a Gnarly Rank build \u2014 and sets up a potential reset moment if the player takes a hit."
+    },
+    {
+      "marker_id": "SM_Room4B_03",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "First PickupSpawn placed as a mid-room reward. Tier 4 pickups are transitioning to scarcer, but this is a pure-combat branch with no traversal relief, so one pickup rewards skilled play and lets the player recover before the back half \u2014 supports the build-and-reset rhythm by giving a buffer between hit-reset moments."
+    },
+    {
+      "marker_id": "SM_Room4B_04",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Continuing the combat-heavy ceiling. Three enemies here, positioned in the interior of the arena, ensures the middle section of the room is the hottest zone. Players maintaining Gnarly Rank through the first cluster must now manage a fresh full-count group \u2014 high reset risk is intentional."
+    },
+    {
+      "marker_id": "SM_Room4B_05",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Slight density dip to 2 after the full-ceiling marker at _04, providing a micro-breath within the combat gauntlet without breaking the pressure arc. The spacing the Room Geometry Designer set between markers does the structural work; this count keeps momentum without stacking three full-ceiling markers in an unbroken row."
+    },
+    {
+      "marker_id": "SM_Room4B_06",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Back to ceiling of 3 to re-spike pressure after the 2-count dip. This is the kind of rhythm \u2014 3, 2, 3 \u2014 that encourages Gnarly Rank to climb during the dip and then face a hard reset threat at the next 3-count cluster, fulfilling the GDD Section 7 build-and-reset mandate at least once within this single room."
+    },
+    {
+      "marker_id": "SM_Room4B_07",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Another 2-count before the final stretch. Combat-heavy branch demands sustained density, but alternating 3/2 prevents the room from becoming a monotonous wall of enemies with no readable moment-to-moment pacing. Players still need to keep their Gnarly Rank alive into the room's closing section."
+    },
+    {
+      "marker_id": "SM_Room4B_08",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Second and final PickupSpawn used here as a late-room carrot. Placing it near the back gives skilled players who survived the main gauntlet a meaningful reward and a small health/resource cushion before exiting \u2014 Tier 4 mid-run pacing means pickups should exist but feel earned, not abundant."
+    },
+    {
+      "marker_id": "SM_Room4B_09",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Final third of the room ramps back to full ceiling. The combat-heavy flag and Tier 4 escalation both demand the closing wave be among the densest. A 3-count here creates a climactic last fight that is the most likely Gnarly Rank reset point in the room \u2014 exactly where GDD Section 7's second reset opportunity should live."
+    },
+    {
+      "marker_id": "SM_Room4B_10",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Penultimate enemy marker also at ceiling. Two consecutive 3-count markers at the end of a pure-combat room is appropriate: the Room Geometry Designer's marker spacing already governs whether they overlap dangerously; at Tier 4 this sustained peak is the payoff of the room's escalating density arc."
+    },
+    {
+      "marker_id": "SM_Room4B_11",
+      "population": "empty",
+      "rationale": "Final EnemySpawn left empty as a deliberate design choice. After two back-to-back ceiling-count markers (_09 and _10), firing a third consecutive full group would risk feeling unfair rather than challenging. The empty slot also means attentive players can sense the room winding down \u2014 a micro-moment of relief that makes the exit feel earned and primes them for the next room rather than burning them out on Room4B alone."
+    }
+  ]
+}

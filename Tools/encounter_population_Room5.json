@@ -1,0 +1,45 @@
+{
+  "room_id": "Room5",
+  "populations": [
+    {
+      "marker_id": "marker_0",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Tier 5 is the start of the mid-to-late transition ramp. Opening the room with 2 enemies at the first spawn point signals escalating pressure without front-loading the hardest encounter; the player can build Gnarly Rank here before the density peaks later in the room."
+    },
+    {
+      "marker_id": "marker_1",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Second enemy marker keeps the ramp consistent \u2014 two enemies again sustains the pressure established at marker_0. Pairing these two markers as equal-density beats gives the player a rhythm to adapt to before heavier markers arrive, supporting the build side of the Gnarly Rank cycle."
+    },
+    {
+      "marker_id": "marker_2",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Placed between the opening enemy cluster and the denser back half, this pickup serves as a deliberate breather reward. At Tier 5, pickups become scarcer, so offering one mid-room is intentional pacing \u2014 it lets the player potentially recover before the harder encounter ahead, and creates a moment where Gnarly Rank could reset (from damage) right before a potential rebuild."
+    },
+    {
+      "marker_id": "marker_3",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "This is the room's difficulty peak. Tier 5 ceiling is 3; a non-combat-heavy linear room should reach but not exceed that ceiling at its climax. Three enemies here is the intended stress spike \u2014 the player's Gnarly Rank built across marker_0 and marker_1 could be tested to a full reset here, directly serving the GDD Section 7 build-and-reset rhythm."
+    },
+    {
+      "marker_id": "marker_4",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Stepping back down to 2 enemies after the 3-enemy spike at marker_3 creates a tension arc rather than a flat wall of maximum density. This is still above early-room norms, keeping late-room pressure, but avoids the entire back half being max-ceiling, which would blur the climax at marker_3."
+    },
+    {
+      "marker_id": "marker_5",
+      "population": "empty",
+      "rationale": "Leaving the final enemy marker empty serves two purposes: it prevents combat fatigue from filling every slot in a linear, non-combat-heavy room, and it gives the player a moment to breathe and reset before exiting to the next room. A fully packed room at Tier 5 (without the combat-heavy flag) would front-load density that should belong to Tiers 6-8, disrupting the overall difficulty curve."
+    },
+    {
+      "marker_id": "marker_6",
+      "population": "empty",
+      "rationale": "At Tier 5, pickups are becoming scarcer per the difficulty curve. One pickup (marker_2) is already placed; a second would over-reward the player in a room that should feel pressured. Leaving this empty reinforces that pickups are a fading luxury as the run progresses, setting expectations correctly for the harder Tier 6-8 rooms ahead."
+    }
+  ]
+}

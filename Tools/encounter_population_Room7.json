@@ -1,0 +1,71 @@
+{
+  "room_id": "Room7",
+  "populations": [
+    {
+      "marker_id": "sm_0",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Tier 7 late-game room opens with a moderately heavy grouping to signal the elevated danger immediately. Three enemies at the entrance forces the player to engage aggressively, building Gnarly Rank early in this room and contributing to the run-wide rhythm of rank accumulation before a potential hit-reset."
+    },
+    {
+      "marker_id": "sm_1",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Second marker escalates to the tier ceiling of 4. Placing max density here, shortly after sm_0, creates a dense early combat stretch that pressures the player's Gnarly Rank high \u2014 setting up a meaningful reset moment if they take a hit in this cluster."
+    },
+    {
+      "marker_id": "sm_2",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Keeps pressure high through the mid-section. Three enemies sustains the dangerous pace of a Tier 7 linear room without giving the player breathing room, consistent with late-game tension rising toward the biome end."
+    },
+    {
+      "marker_id": "sm_3",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Only two PickupSpawn markers exist in this room; at Tier 7 pickups are scarce but not absent. Populating this one rewards survival through the opening enemy clusters and provides a brief incentive to push forward, which also loosely functions as a breather beat between combat waves."
+    },
+    {
+      "marker_id": "sm_4",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Resumes at the ceiling after the pickup marker. This spike is the sharpest point in the room's pacing arc and is likely where a less-skilled player takes a hit, triggering a Gnarly Rank reset \u2014 exactly the build-and-reset rhythm GDD Section 7 targets across the run."
+    },
+    {
+      "marker_id": "sm_5",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Slightly below ceiling to avoid a flat all-4s plateau that would feel monotonous, while still keeping Tier 7 pressure. Three here maintains danger as the player pushes deeper into the room."
+    },
+    {
+      "marker_id": "sm_6",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Another ceiling-count grouping in the latter half of the room. Late Tier 7 rooms should sit at or near the top of their density ceiling per the difficulty curve, and this marker reinforces that the room does not relent in the back stretch."
+    },
+    {
+      "marker_id": "sm_7",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Slight dip from the ceiling to give micro-variation in wave sizes; a uniform wall of 4s across every marker would make difficulty feel static rather than dynamically dangerous. Three still constitutes heavy Tier 7 pressure."
+    },
+    {
+      "marker_id": "sm_8",
+      "population": "enemy",
+      "enemy_count": 4,
+      "rationale": "Near the room exit, a final ceiling-count spike reinforces the late-game tension arc and ensures the player cannot coast through the last stretch. This is a prime second reset point for Gnarly Rank in a full-run context."
+    },
+    {
+      "marker_id": "sm_9",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Penultimate enemy marker kept at 3 rather than 4 so the room ends on a slightly varied note rather than a pure maximum \u2014 the density is still unmistakably Tier 7 but avoids an identical closing beat to sm_8."
+    },
+    {
+      "marker_id": "sm_10",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "The second and final PickupSpawn is populated as a post-gauntlet reward near the room's exit. At Tier 7 pickups are scarce, but placing this one at the end acknowledges the sustained punishment the player endured and provides a small incentive to clear the room fully before moving on."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "room_id": "Room6",
+  "populations": [
+    {
+      "marker_id": "SM_01",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Tier 6 linear room opens with a moderate threat. Two enemies at the entry marker establish that the late-game ramp is underway without front-loading maximum pressure, giving the player a moment to build Gnarly Rank before the denser clusters ahead."
+    },
+    {
+      "marker_id": "SM_02",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Second enemy marker escalates quickly to the tier ceiling. Back-to-back combat at counts 2 then 3 creates the first real Gnarly Rank build opportunity of this room; a player who handles both cleanly will be rewarded, while a hit here triggers the first reset of the run's rhythm."
+    },
+    {
+      "marker_id": "SM_03",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "A pickup placed between the opening combat cluster and the mid-room gauntlet. Tier 6 pickups are scarce by design, so this one is earned -- it rewards surviving SM_01/SM_02 and gives the player a small buffer before the denser back half, without making the run feel padded."
+    },
+    {
+      "marker_id": "SM_04",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Mid-room marker at the tier ceiling. This is the start of the room's densest stretch; the player must maintain or rebuild Gnarly Rank through a sustained fight, contributing to the build-and-reset arc GDD Section 7 requires across the full run."
+    },
+    {
+      "marker_id": "SM_05",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Consecutive ceiling-count marker maintains high pressure. Two ceiling-count markers in a row (SM_04 and SM_05) form the room's peak danger window, pushing the player's Gnarly Rank to its highest point this room or forcing a reset if they absorb a hit."
+    },
+    {
+      "marker_id": "SM_06",
+      "population": "enemy",
+      "enemy_count": 2,
+      "rationale": "Slight pull-back from the ceiling after the twin peak. Two enemies here gives a brief breath before the final marker without fully releasing tension -- appropriate for a linear tier-6 room that still needs to feel dangerous heading into the exit zone."
+    },
+    {
+      "marker_id": "SM_07",
+      "population": "enemy",
+      "enemy_count": 3,
+      "rationale": "Final enemy marker hits the ceiling to close the room on a high-stakes note. Defeating this group while still holding Gnarly Rank feels climactic; taking a hit here resets it just before Room 7, which is exactly the kind of second reset the GDD's whole-run pacing rhythm anticipates."
+    },
+    {
+      "marker_id": "SM_08",
+      "population": "empty",
+      "rationale": "Second pickup marker left empty. Tier 6 calls for pickups to be scarce; SM_03 already provides one hard-earned pickup this room. Filling both pickup slots would undercut the resource pressure that makes late rooms tense and would blunt the Gnarly Rank stakes by over-cushioning the player's health buffer."
+    }
+  ]
+}

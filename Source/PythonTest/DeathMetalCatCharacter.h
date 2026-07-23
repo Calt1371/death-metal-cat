@@ -57,7 +57,7 @@ protected:
 	/** Bound to the MoveRightAction's Completed/Canceled events: zeroes LastMoveRightAxisValue on release. Without this, releasing movement input leaves LastMoveRightAxisValue stuck at its last held (nonzero) value forever, since Triggered simply stops firing rather than reporting 0 -- DetectWallForSlide would then keep testing a stale, no-longer-held direction indefinitely. */
 	void HandleMoveRightReleased(const FInputActionValue& Value);
 
-	/** Bound to the JumpAction's Started event; wall-jumps (launch up and away from the wall, brief movement-input lockout) if currently wall-sliding, otherwise just forwards to ACharacter::Jump() as before. */
+	/** Bound to the JumpAction's Started event; wall-jumps (launch up and away from the wall, brief reduced-authority commitment window before full air control -- see WallJumpCommitmentDuration) if currently wall-sliding, otherwise just forwards to ACharacter::Jump() as before. */
 	void HandleJump(const FInputActionValue& Value);
 
 	/** Bound to the DodgeAction's Started event; launches the character and starts the dodge/i-frame/frame-advance timers. */
@@ -111,8 +111,8 @@ protected:
 	 */
 	bool DetectWallForSlide(float& OutWallSign) const;
 
-	/** Timer callback: ends the brief post-wall-jump movement-input lockout (see HandleJump/HandleMoveRight). */
-	void ClearWallJumpInputLock();
+	/** Timer callback: ends the brief post-wall-jump reduced-authority commitment window, restoring full air control (see HandleJump/HandleMoveRight). */
+	void ClearWallJumpCommitmentWindow();
 
 	/** Bound to the SwordAttackAction's Started event; plays the swing and arms the hitbox timers. */
 	void HandleSwordAttack(const FInputActionValue& Value);
@@ -173,6 +173,21 @@ protected:
 	 * updates the loop on the next shot rather than being stuck with whichever animation started it.
 	 */
 	void UpdateHoldFireFlipbook(bool bAirborne);
+
+	/**
+	 * Dante/DMC-style "float on shoot": called from FireShotTrace whenever a shot fires while
+	 * airborne (the same condition that triggers the 45-degree air-down-shot -- this is a brief
+	 * gravity reduction layered on top of that, not a competing system; it never touches
+	 * FireDirection or the flipbook, only MoveComp->GravityScale). Reduces gravity to
+	 * DefaultGravityScale * AirFireGravityScaleMultiplier and (re-)arms a AirFireFloatDuration
+	 * timer that restores normal gravity -- a floaty hang, not a full stop, and capped so it can
+	 * never turn into infinite hover. Continuous fire re-arms (extends) the same timer rather than
+	 * re-applying the multiplier on top of itself, so rapid shots don't compound toward zero gravity.
+	 */
+	void ApplyAirFireFloat();
+
+	/** Timer callback: restores MoveComp->GravityScale to DefaultGravityScale, ending the air-fire float window. */
+	void ClearAirFireFloat();
 
 	/** Sets the sprite to ShootFlipbook (once) and pins it to the given frame index, code-driven like Jump's. */
 	void SetShootFrame(int32 FrameIndex, const TCHAR* Reason);
@@ -289,6 +304,22 @@ public:
 	UFUNCTION(Exec)
 	void TestQuip(const FString& TriggerTypeName);
 
+	/**
+	 * TEMP dev/testing console command (Exec) -- empirically measures real jump distance for the
+	 * Room Geometry Designer's movement constants, since JumpZVelocity/AirControl changed since
+	 * rooms were originally validated. "Running" sets horizontal velocity to the current
+	 * MoveComp->MaxWalkSpeed at takeoff (matching a full run-up); "Standing" starts at zero
+	 * horizontal velocity (pure air-control-driven acceleration for the whole arc). Either way,
+	 * forward input is held for the entire flight (see UpdateJumpDistanceTest), matching how a
+	 * player actually clears a gap -- not just the takeoff instant. Logs StartX/EndX/Distance the
+	 * moment MovementMode returns to Walking. Strip once the new constants are captured.
+	 */
+	UFUNCTION(Exec)
+	void TestJumpDistance(const FString& JumpTypeName);
+
+	/** Tick-driven follow-up to TestJumpDistance -- holds forward input every frame and detects landing (see TestJumpDistance's own doc comment). No-ops entirely while bJumpDistanceTestActive is false. */
+	void UpdateJumpDistanceTest();
+
 	// -- Input --
 
 	/** Mapping context applied to this character's EnhancedInput subsystem once it's possessed by a player controller. */
@@ -324,6 +355,37 @@ public:
 	/** Horizontal speed (uu/s) at/above which the Run flipbook is used instead of Walk. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement", meta = (ClampMin = "0"))
 	float WalkSpeedThreshold = 300.f;
+
+	/**
+	 * Initial upward velocity (uu/s) applied by a regular jump -- drives
+	 * CharacterMovementComponent::JumpZVelocity. Placeholder value, tune freely -- raised from the
+	 * engine default of 420 (max jump height ~90uu, confirmed too low during platforming testing:
+	 * some Room Geometry Designer ledge_step pieces sit right at that old ceiling, leaving zero
+	 * margin for anything less than frame-perfect play) to 600 (max jump height ~183.7uu).
+	 * Tools/room_geometry_designer.py's own MAX_JUMP_HEIGHT constant was derived from the OLD 420
+	 * value and needs re-querying/updating (and existing rooms re-validated against the new,
+	 * larger ceiling) if this is tuned further -- raising it doesn't invalidate anything already
+	 * generated (a smaller old ceiling is a strict subset of a larger new one), it just means
+	 * future room generation isn't using all the newly-available headroom until that constant is
+	 * refreshed.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement", meta = (ClampMin = "0"))
+	float JumpZVelocity = 600.f;
+
+	/**
+	 * Drives CharacterMovementComponent::AirControl (0-1) -- the engine's own horizontal-steering
+	 * authority multiplier while airborne. This project never explicitly set it, so it sat at the
+	 * engine default of 0.05 the whole time: AddMovementInput calls while falling were registering
+	 * correctly (confirmed directly -- HandleMoveRight has no airborne gate, and the Enhanced Input
+	 * MoveRightAction asset has no Triggers/Modifiers that could suppress it), but the resulting
+	 * steering effect was reduced to ~5% of normal, reading as "no air control at all" on every
+	 * jump. Raised to 1.0 (full, Mario-style air steering) as the new baseline for every jump; the
+	 * wall-jump commitment window (WallJumpCommitmentInputScale) still layers on top of THIS value
+	 * for its own brief reduced-authority period after a wall jump specifically, rather than being
+	 * the only place air control exists. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement", meta = (ClampMin = "0", ClampMax = "1"))
+	float AirControl = 1.f;
 
 	// -- Animation --
 
@@ -443,9 +505,21 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
 	float WallJumpForceVertical = 700.f;
 
-	/** How long (seconds) movement input is ignored right after a wall jump, so the outward launch can't be instantly canceled by holding back toward the wall. Placeholder value, tune freely. */
+	/**
+	 * How long (seconds) after a wall jump movement input is scaled by WallJumpCommitmentInputScale
+	 * rather than applied at full authority, before returning to normal air control. Was previously
+	 * a full input lockout (movement ignored entirely) -- replaced because that left the player on
+	 * rails until landing, with no way to chain a wall jump into a second wall or platform. A brief
+	 * reduced-authority window (rather than jumping straight to full control) still gives the
+	 * outward launch some resistance against being instantly canceled by holding back toward the
+	 * wall, without blocking genuine redirection. Placeholder value, tune freely.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0"))
-	float WallJumpInputLockDuration = 0.15f;
+	float WallJumpCommitmentDuration = 0.15f;
+
+	/** Movement input scale (0-1) during the WallJumpCommitmentDuration window after a wall jump -- 1.0 would be full immediate air control, lower values leave a brief reduced-authority "commitment" beat before full control kicks in. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "WallSlide", meta = (ClampMin = "0", ClampMax = "1"))
+	float WallJumpCommitmentInputScale = 0.5f;
 
 	/** True while airborne, pressed against a detected wall, and holding movement input toward it -- see UpdateWallSlide. */
 	UPROPERTY(BlueprintReadOnly, Category = "WallSlide")
@@ -707,6 +781,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
 	float GunBaseDamage = 10.f;
 
+	/** Gravity multiplier applied while the air-fire float window is active (e.g. 0.35 = 35% of normal gravity -- a floaty hang, not a full stop). Placeholder value, tune freely. See ApplyAirFireFloat. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0", ClampMax = "1"))
+	float AirFireGravityScaleMultiplier = 0.35f;
+
+	/** How long (seconds) the air-fire float window lasts after an airborne shot before gravity returns to normal -- continuous fire re-arms (extends) this rather than stacking the multiplier further, so it can never turn into infinite hover. Placeholder value, tune freely. See ApplyAirFireFloat. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
+	float AirFireFloatDuration = 0.3f;
+
 	// -- Quip --
 
 	/** Offline-imported Cayde quip lines (see QuipTypes.h / AgentScripts/ue_import_quip_datatable.py) -- points at /Game/Data/DT_Quips. */
@@ -764,10 +846,10 @@ private:
 	/** Which direction (matches Scale.X's sign convention) the wall currently being slid on is in -- set by UpdateWallSlide; also used to face the sprite into the wall and to know which way is "outward" for a wall jump. */
 	float WallSlideFacingSign = 1.f;
 
-	/** True for WallJumpInputLockDuration seconds after a wall jump; HandleMoveRight ignores all movement input while true. */
-	bool bWallJumpInputLocked = false;
+	/** True for WallJumpCommitmentDuration seconds after a wall jump; HandleMoveRight scales movement input by WallJumpCommitmentInputScale while true, instead of blocking it entirely. */
+	bool bInWallJumpCommitmentWindow = false;
 
-	FTimerHandle WallJumpInputLockTimerHandle;
+	FTimerHandle WallJumpCommitmentTimerHandle;
 
 	/** Which of the 5 Dodge flipbook frames is currently showing; advanced by AdvanceDodgeFrame(). */
 	int32 DodgeCurrentFrame = 0;
@@ -786,6 +868,26 @@ private:
 
 	FTimerHandle ShootTimerHandle;
 	FTimerHandle ShootDrawTimerHandle;
+
+	/** MoveComp->GravityScale as of BeginPlay, before any air-fire float has ever touched it -- the value ApplyAirFireFloat multiplies down and ClearAirFireFloat restores back to. */
+	float DefaultGravityScale = 1.f;
+
+	/** True while the air-fire float window is active; guards ApplyAirFireFloat against re-applying the gravity multiplier on top of itself on repeat shots. */
+	bool bAirFireFloatActive = false;
+
+	FTimerHandle AirFireFloatTimerHandle;
+
+	/** TEMP (see TestJumpDistance) -- true from the moment a jump-distance test starts until it detects landing. */
+	bool bJumpDistanceTestActive = false;
+
+	/** TEMP -- true once the jump-distance test has actually observed MoveComp->IsFalling(), so a landing is only ever detected AFTER genuinely having left the ground (avoids a false-positive landing on the very first tick, before CharacterMovementComponent has processed the jump yet). */
+	bool bJumpDistanceTestHasLeftGround = false;
+
+	/** TEMP -- actor X at the moment the current jump-distance test started. */
+	float JumpDistanceTestStartX = 0.f;
+
+	/** TEMP -- "Running" or "Standing", echoed back in the landing log line. */
+	FString JumpDistanceTestLabel;
 
 	/** True while the Shoot input action is physically held down (Started..Completed/Canceled). */
 	bool bIsHoldingShootButton = false;

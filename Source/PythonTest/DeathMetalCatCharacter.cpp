@@ -35,6 +35,8 @@ ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 		MoveComp->SetPlaneConstraintNormal(FVector(0.f, 1.f, 0.f));
 		MoveComp->bSnapToPlaneAtStart = true;
 		MoveComp->MaxWalkSpeed = MaxMoveSpeed;
+		MoveComp->JumpZVelocity = JumpZVelocity;
+		MoveComp->AirControl = AirControl;
 	}
 
 	bUseControllerRotationYaw = false;
@@ -95,6 +97,11 @@ void ADeathMetalCatCharacter::BeginPlay()
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->SetPlaneConstraintOrigin(GetActorLocation());
+
+		// Cached once, before ApplyAirFireFloat (the only thing that ever touches GravityScale)
+		// has a chance to run -- the single source of truth both for reducing gravity during the
+		// air-fire float window and for restoring it afterward.
+		DefaultGravityScale = MoveComp->GravityScale;
 	}
 
 	if (IdleFlipbook && GetSprite())
@@ -184,13 +191,6 @@ void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 	// actually get to move the character (e.g. during the wall-jump input lockout just below).
 	LastMoveRightAxisValue = Value.Get<float>();
 
-	if (bWallJumpInputLocked)
-	{
-		// Brief window right after a wall jump where movement input is ignored entirely, so the
-		// outward horizontal launch can't be instantly canceled by holding back toward the wall.
-		return;
-	}
-
 	// Grounded + holding Shoot, or grounded + mid sword-swing: plant and ignore movement input --
 	// you can't realistically run while firing a held weapon or swinging for power. Airborne is
 	// exempted from both: jump momentum should carry through normally even mid-action, since
@@ -202,7 +202,11 @@ void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 		return;
 	}
 
-	AddMovementInput(FVector(1.f, 0.f, 0.f), LastMoveRightAxisValue);
+	// Brief post-wall-jump window: input still gets through (so the player can genuinely redirect
+	// mid-air and chain into a second wall/platform), just at reduced authority rather than full
+	// lockout -- see WallJumpCommitmentDuration/WallJumpCommitmentInputScale.
+	const float InputScale = bInWallJumpCommitmentWindow ? WallJumpCommitmentInputScale : 1.f;
+	AddMovementInput(FVector(1.f, 0.f, 0.f), LastMoveRightAxisValue * InputScale);
 }
 
 void ADeathMetalCatCharacter::HandleMoveRightReleased(const FInputActionValue& Value)
@@ -222,8 +226,8 @@ void ADeathMetalCatCharacter::HandleJump(const FInputActionValue& Value)
 		LaunchCharacter(FVector(-WallSlideFacingSign * WallJumpForceHorizontal, 0.f, WallJumpForceVertical), true, true);
 
 		bIsWallSliding = false;
-		bWallJumpInputLocked = true;
-		GetWorldTimerManager().SetTimer(WallJumpInputLockTimerHandle, this, &ADeathMetalCatCharacter::ClearWallJumpInputLock, WallJumpInputLockDuration, false);
+		bInWallJumpCommitmentWindow = true;
+		GetWorldTimerManager().SetTimer(WallJumpCommitmentTimerHandle, this, &ADeathMetalCatCharacter::ClearWallJumpCommitmentWindow, WallJumpCommitmentDuration, false);
 		return;
 	}
 
@@ -350,9 +354,9 @@ void ADeathMetalCatCharacter::ClearInvincibility()
 	bIsInvincible = false;
 }
 
-void ADeathMetalCatCharacter::ClearWallJumpInputLock()
+void ADeathMetalCatCharacter::ClearWallJumpCommitmentWindow()
 {
-	bWallJumpInputLocked = false;
+	bInWallJumpCommitmentWindow = false;
 }
 
 bool ADeathMetalCatCharacter::DetectWallForSlide(float& OutWallSign) const
@@ -711,6 +715,81 @@ void ADeathMetalCatCharacter::TestQuip(const FString& TriggerTypeName)
 	TriggerQuip(TriggerType);
 }
 
+void ADeathMetalCatCharacter::TestJumpDistance(const FString& JumpTypeName)
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp)
+	{
+		return;
+	}
+
+	const bool bRunning = JumpTypeName.Equals(TEXT("Running"), ESearchCase::IgnoreCase);
+	const bool bStanding = JumpTypeName.Equals(TEXT("Standing"), ESearchCase::IgnoreCase);
+	if (!bRunning && !bStanding)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[JUMP DISTANCE TEST] Unrecognized type '%s' -- expected Running or Standing"), *JumpTypeName);
+		return;
+	}
+
+	if (!MoveComp->IsMovingOnGround())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[JUMP DISTANCE TEST] Must be grounded to start a test -- not currently on ground"));
+		return;
+	}
+
+	JumpDistanceTestLabel = JumpTypeName;
+	JumpDistanceTestStartX = GetActorLocation().X;
+
+	// Running: current effective MaxWalkSpeed (post attribute scaling), matching a real player at
+	// full run-up speed the instant they leave the ground. Standing: zero -- the whole arc's
+	// horizontal distance comes purely from AirControl-driven acceleration during flight (see
+	// UpdateJumpDistanceTest, which holds forward input every tick regardless of which type this is).
+	FVector Velocity = MoveComp->Velocity;
+	Velocity.X = bRunning ? MoveComp->MaxWalkSpeed : 0.f;
+	Velocity.Z = 0.f;
+	MoveComp->Velocity = Velocity;
+
+	Jump();
+	bJumpDistanceTestActive = true;
+	bJumpDistanceTestHasLeftGround = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("[JUMP DISTANCE TEST] Started '%s' jump test at X=%.2f, initial VelocityX=%.1f (MaxWalkSpeed=%.1f, JumpZVelocity=%.1f, AirControl=%.2f)"),
+		*JumpDistanceTestLabel, JumpDistanceTestStartX, Velocity.X, MoveComp->MaxWalkSpeed, MoveComp->JumpZVelocity, MoveComp->AirControl);
+}
+
+void ADeathMetalCatCharacter::UpdateJumpDistanceTest()
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp)
+	{
+		bJumpDistanceTestActive = false;
+		return;
+	}
+
+	// Held for the entire arc, matching how a player actually clears a gap -- not just a takeoff
+	// impulse.
+	AddMovementInput(FVector(1.f, 0.f, 0.f), 1.f);
+
+	const bool bFalling = MoveComp->IsFalling();
+	if (bFalling)
+	{
+		bJumpDistanceTestHasLeftGround = true;
+	}
+
+	// Only counts as "landed" after having actually been observed falling first -- guards against
+	// a false-positive on the very first tick, before CharacterMovementComponent has processed the
+	// jump (and transitioned out of Walking) yet.
+	if (bJumpDistanceTestHasLeftGround && !bFalling)
+	{
+		const float EndX = GetActorLocation().X;
+		const float Distance = EndX - JumpDistanceTestStartX;
+		UE_LOG(LogTemp, Warning, TEXT("[JUMP DISTANCE TEST] '%s' jump LANDED: StartX=%.2f EndX=%.2f Distance=%.2f"),
+			*JumpDistanceTestLabel, JumpDistanceTestStartX, EndX, Distance);
+		bJumpDistanceTestActive = false;
+		bJumpDistanceTestHasLeftGround = false;
+	}
+}
+
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 {
 	if (bIsAttacking)
@@ -948,6 +1027,34 @@ void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne)
 	}
 }
 
+void ADeathMetalCatCharacter::ApplyAirFireFloat()
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp)
+	{
+		return;
+	}
+
+	if (!bAirFireFloatActive)
+	{
+		MoveComp->GravityScale = DefaultGravityScale * AirFireGravityScaleMultiplier;
+		bAirFireFloatActive = true;
+	}
+
+	// (Re-)arms the same timer on every airborne shot -- continuous fire extends the float window
+	// rather than stacking the multiplier again on top of an already-reduced gravity scale.
+	GetWorldTimerManager().SetTimer(AirFireFloatTimerHandle, this, &ADeathMetalCatCharacter::ClearAirFireFloat, AirFireFloatDuration, false);
+}
+
+void ADeathMetalCatCharacter::ClearAirFireFloat()
+{
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->GravityScale = DefaultGravityScale;
+	}
+	bAirFireFloatActive = false;
+}
+
 void ADeathMetalCatCharacter::FireShotTrace()
 {
 	if (bIsShooting)
@@ -972,6 +1079,13 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	const bool bAirborneShot = MoveComp && MoveComp->IsFalling();
 	UpdateHoldFireFlipbook(bAirborneShot);
+
+	if (bAirborneShot)
+	{
+		// Independent of FireDirection/animation below -- this only ever touches GravityScale, so
+		// it can't fight with the fixed 45-degree trajectory or the Air Down Shot flipbook.
+		ApplyAirFireFloat();
+	}
 
 	// Airborne: fixed 45 degrees downward, horizontal component still respecting facing (an
 	// aim-down-forward shot, not a pure vertical drop) -- grounded: unchanged pure horizontal.
@@ -1072,6 +1186,11 @@ void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	UpdateWallSlide();
 	UpdateAnimation();
+
+	if (bJumpDistanceTestActive)
+	{
+		UpdateJumpDistanceTest();
+	}
 }
 
 void ADeathMetalCatCharacter::UpdateAnimation()

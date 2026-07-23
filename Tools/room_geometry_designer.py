@@ -48,17 +48,37 @@ ROOM_ROLES = ("linear", "branch_a", "branch_b")
 # These are derived, not placeholders -- if any of the above tunables change in the engine,
 # re-query and update the constants below to match, since the whole point is that a generated
 # room is only ever as crossable as Cayde's ACTUAL current moveset allows.
+#
+# UPDATED 2026-07-23: JumpZVelocity raised 420->600 (jump-height tuning pass) and AirControl
+# raised 0.05->1.0 (fixed a universal air-control-lockout bug). MAX_JUMP_HEIGHT is still pure
+# formula (vertical-only physics, no air-control complication -- the formula is trusted once
+# JUMP_Z_VELOCITY is current). MAX_JUMP_DISTANCE, however, is no longer formula-derived -- with
+# AirControl=1.0, the old naive v*t constant-speed assumption (which implicitly assumed the
+# player is already at full running speed for the whole arc) measurably diverges from a
+# standing-start jump's real horizontal reach, since the character has to accelerate into that
+# speed instead of already being at it. Replaced with real measured distances from a live PIE
+# test (TestJumpDistance console command, ADeathMetalCatCharacter) instead of guessing:
+#   Running jump (full MaxWalkSpeed run-up before leaving the ground):  740.01 units measured
+#     (naive v*t formula predicted ~734.7 -- close, since a running jump IS already at full speed)
+#   Standing jump (zero horizontal velocity at takeoff, pure air-control-driven horizontal
+#     movement): 647.11 units measured -- meaningfully short of the running-jump distance because
+#     of the accel ramp-up, and the correct conservative ceiling for "is this gap EVER crossable"
+#     (a room can't assume the player has a run-up before every gap).
 GRAVITY_Z = 980.0  # magnitude, uu/s^2
 
-JUMP_Z_VELOCITY = 420.0
+JUMP_Z_VELOCITY = 600.0
 MAX_WALK_SPEED = 600.0
 # Full jump-arc height: v^2 / (2g).
 MAX_JUMP_HEIGHT = JUMP_Z_VELOCITY ** 2 / (2 * GRAVITY_Z)
-# Full jump-arc airtime (up and back down to the same height): 2v/g. Horizontal distance
-# assumes full running speed maintained through the whole arc (an ideal-case running jump,
-# the correct upper bound for "is this gap ever crossable").
-_JUMP_AIRTIME = 2 * JUMP_Z_VELOCITY / GRAVITY_Z
-MAX_JUMP_DISTANCE = MAX_WALK_SPEED * _JUMP_AIRTIME
+
+# Horizontal jump distance -- EMPIRICALLY MEASURED (see comment block above), not formula math.
+# MAX_JUMP_DISTANCE is the standing-jump distance: the hard reachability ceiling used by
+# validate_room() and told to the model, since gap sizing must guarantee a gap is crossable
+# even with zero run-up. MAX_JUMP_DISTANCE_RUNNING is informational only -- this tool doesn't
+# currently distinguish a "comfortable" vs "maximum" gap tier, so it isn't used as a bound
+# anywhere yet, but is kept here in case that distinction gets added later.
+MAX_JUMP_DISTANCE = 647.11
+MAX_JUMP_DISTANCE_RUNNING = 740.01
 
 WALL_JUMP_FORCE_HORIZONTAL = 600.0
 WALL_JUMP_FORCE_VERTICAL = 700.0
@@ -98,7 +118,7 @@ ALL_ROOMS = (
 SYSTEM_PROMPT = f"""You are the Room Geometry Designer for Death Metal Cat, a 2D side-scroller. You compose a single room's traversal layout as a strict sequence of geometry pieces, left to right, for the city biome's room-progression framework.
 
 MOVEMENT CONSTRAINTS (hard bounds, derived from Cayde's actual current tuning -- not guesses):
-- Max horizontal jump distance: {MAX_JUMP_DISTANCE:.1f} units (running jump, full speed maintained through the arc)
+- Max horizontal jump distance: {MAX_JUMP_DISTANCE:.1f} units (standing-jump reach, zero run-up -- the conservative case, since a room can't assume the player has a run-up before every gap)
 - Max jump height: {MAX_JUMP_HEIGHT:.1f} units
 - Wall-jump horizontal reach: {WALL_JUMP_MAX_DISTANCE:.1f} units
 - Wall-jump vertical reach: {WALL_JUMP_MAX_HEIGHT:.1f} units

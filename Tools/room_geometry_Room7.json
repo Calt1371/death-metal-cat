@@ -18,7 +18,7 @@
     {
       "type": "ledge_step",
       "params": {
-        "height_up": 75,
+        "height_up": 150.0,
         "length": 60
       },
       "sequence_index": 2

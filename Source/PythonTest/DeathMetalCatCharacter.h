@@ -369,16 +369,16 @@ public:
 	 * CharacterMovementComponent::JumpZVelocity. Placeholder value, tune freely -- raised from the
 	 * engine default of 420 (max jump height ~90uu, confirmed too low during platforming testing:
 	 * some Room Geometry Designer ledge_step pieces sit right at that old ceiling, leaving zero
-	 * margin for anything less than frame-perfect play) to 600 (max jump height ~183.7uu).
-	 * Tools/room_geometry_designer.py's own MAX_JUMP_HEIGHT constant was derived from the OLD 420
-	 * value and needs re-querying/updating (and existing rooms re-validated against the new,
-	 * larger ceiling) if this is tuned further -- raising it doesn't invalidate anything already
-	 * generated (a smaller old ceiling is a strict subset of a larger new one), it just means
-	 * future room generation isn't using all the newly-available headroom until that constant is
-	 * refreshed.
+	 * margin for anything less than frame-perfect play) to 600, then further retuned via live PIE
+	 * testing to 708.65 (max jump height increases accordingly). Tools/room_geometry_designer.py's
+	 * own MAX_JUMP_HEIGHT constant was derived from the OLD 420 value and needs re-querying/
+	 * updating (and existing rooms re-validated against the new, larger ceiling) if this is tuned
+	 * further -- raising it doesn't invalidate anything already generated (a smaller old ceiling is
+	 * a strict subset of a larger new one), it just means future room generation isn't using all
+	 * the newly-available headroom until that constant is refreshed.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement", meta = (ClampMin = "0"))
-	float JumpZVelocity = 600.f;
+	float JumpZVelocity = 708.652466f;
 
 	/**
 	 * Drives CharacterMovementComponent::AirControl (0-1) -- the engine's own horizontal-steering

@@ -488,17 +488,17 @@ void ADeathMetalCatCharacter::HandleDeath()
 
 void ADeathMetalCatCharacter::HandleRespawn()
 {
-	// InitialSpawnTransform is cached once in BeginPlay from wherever the GameMode/PlayerStart
-	// flow actually placed this character -- confirmed to currently match RoomShell_ROOM1's own
-	// position exactly (both at the same X/Y/Z), so reusing it here for the full-biome restart is
-	// correct as long as PlayerStart and Room1's shell stay co-located. If they're ever
-	// deliberately separated, this should switch to looking up APlayerStart's live transform
-	// instead of trusting this cached snapshot.
-	SetActorTransform(InitialSpawnTransform);
+	// No SetActorTransform here anymore -- the teleport now happens inside
+	// ARoomProgressionManager::BeginRoomTransition (called via ResetToStartingRoom below), timed
+	// to land during the fade's black pause rather than instantly/visibly right now. This also
+	// resolves the old fragility this line used to have: InitialSpawnTransform only worked because
+	// PlayerStart happened to be co-located with RoomShell_ROOM1; the new teleport instead reads
+	// the starting room's actual live RoomShell position every time, so it can never drift out of
+	// sync with wherever that shell really is.
 
-	// Stop any leftover fall/knockback velocity from carrying over through the teleport -- without
-	// this, dying mid-air (or mid-dodge-launch) would have the character immediately resume
-	// falling/sliding from the spawn point using whatever velocity they died with.
+	// Stop any leftover fall/knockback velocity now (independent of the teleport's own timing) --
+	// without this, dying mid-air (or mid-dodge-launch) would have the character immediately
+	// resume falling/sliding once actually teleported, using whatever velocity they died with.
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->StopMovementImmediately();
@@ -507,8 +507,9 @@ void ADeathMetalCatCharacter::HandleRespawn()
 	// Death fully restarts the biome run, not just the player's own position -- rooms deactivate
 	// as the player advances, so without this a death in (say) Room6 would respawn the player at
 	// Room1 while Room2-6 stayed hidden/collision-disabled from the original pass, leaving them
-	// stuck. ResetToStartingRoom re-activates Room1 and re-arms every exit trigger so the whole
-	// sequence is walkable again from scratch.
+	// stuck. ResetToStartingRoom now routes through BeginRoomTransition (fade to black, re-activate
+	// Room1 + re-arm every exit trigger + teleport during the pause, fade back in), rather than
+	// switching instantly, so the death restart gets the same treatment as any other room change.
 	if (ARoomProgressionManager* Manager = Cast<ARoomProgressionManager>(UGameplayStatics::GetActorOfClass(this, ARoomProgressionManager::StaticClass())))
 	{
 		Manager->ResetToStartingRoom();
@@ -517,11 +518,13 @@ void ADeathMetalCatCharacter::HandleRespawn()
 	Health = MaxHealth;
 	bIsDead = false;
 
-	EnableInput(Cast<APlayerController>(GetController()));
+	// No EnableInput here anymore -- BeginRoomTransition re-enables input itself once the fade-in
+	// completes, so the player can't act while the screen is still black/fading.
 
 	// Brief invincibility so respawning doesn't immediately re-die standing in the same spot --
 	// reuses the exact same mechanism as Dodge's i-frames (bIsInvincible/IFrameTimerHandle/
-	// ClearInvincibility), just armed for PostRespawnInvulnDuration instead of IFrameDuration.
+	// ClearInvincibility), just armed for PostRespawnInvulnDuration instead of IFrameDuration. Safe
+	// to arm now (before input is even back) since it only ever gates incoming damage, never input.
 	bIsInvincible = true;
 	GetWorldTimerManager().SetTimer(IFrameTimerHandle, this, &ADeathMetalCatCharacter::ClearInvincibility, PostRespawnInvulnDuration, false);
 }

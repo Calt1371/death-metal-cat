@@ -39,6 +39,12 @@ class ADeathMetalCatCharacter;
  * There is only ever one dialogue box instance (never spawned/destroyed per quip, consistent with
  * this whole widget's philosophy), so retriggering while one is already showing just resets its
  * timer and replaces the text -- it can never stack multiple boxes.
+ *
+ * Also owns the full-screen room-transition fade (RoomFadeImage), added LAST in Initialize() so
+ * it paints over every other element here (including the low-health tint and quip box) --
+ * unlike LowHealthTintImage's health-driven opacity, this is driven entirely by
+ * ARoomProgressionManager calling StartRoomFadeOut/StartRoomFadeIn, same push-driven idea as
+ * ShowQuip. See RoomProgressionManager::BeginRoomTransition for the orchestration.
  */
 UCLASS()
 class PYTHONTEST_API UGnarlyRankHUDWidget : public UUserWidget
@@ -61,6 +67,15 @@ public:
 	 */
 	void ShowQuip(const FString& Line, float DisplayDuration);
 
+	/** Begins smoothly ramping RoomFadeImage's opacity from its current value to fully opaque (1.0) over Duration seconds, driven from NativeTick. Called by ARoomProgressionManager::BeginRoomTransition at the start of a room transition. */
+	void StartRoomFadeOut(float Duration);
+
+	/** Begins smoothly ramping RoomFadeImage's opacity from its current value down to fully transparent (0.0) over Duration seconds, driven from NativeTick. Called by ARoomProgressionManager::BeginRoomTransition once the black pause is over and the new room is ready. */
+	void StartRoomFadeIn(float Duration);
+
+	/** Immediate, non-animated opacity set -- used to snap RoomFadeImage to a known state rather than animate to it (e.g. forcing fully black with no fade, if ever needed). */
+	void SetRoomFadeOpacity(float Alpha);
+
 private:
 	/**
 	 * Polls the owning character and refreshes whichever sub-elements have actually changed since
@@ -76,6 +91,9 @@ private:
 
 	/** Per-tick fade timing for the quip dialogue box -- see ShowQuip. No-ops entirely while bQuipShowing is false. */
 	void UpdateQuipFade();
+
+	/** Per-tick fade timing for RoomFadeImage -- see StartRoomFadeOut/StartRoomFadeIn. No-ops entirely while bRoomFadeActive is false. */
+	void UpdateRoomFade();
 
 	/** Applies Alpha as the render opacity of every quip dialogue box element in one call -- QuipPortraitImage is deliberately excluded since it's nested inside QuipPortraitFrame via SetContent, and Slate render opacity already cascades to children. */
 	void SetQuipVisualsOpacity(float Alpha);
@@ -153,4 +171,25 @@ private:
 
 	/** How long (seconds) the current quip stays fully visible before UpdateQuipFade starts fading it out -- the DisplayDuration passed into the most recent ShowQuip call. */
 	float QuipDisplayDuration = 3.f;
+
+	// -- Room transition fade --
+
+	/** Full-screen black overlay for room transitions, added LAST in Initialize() so it paints over every other element on this HUD. Plain solid-color UImage (engine WhiteSquareTexture tinted black), same construction technique as LowHealthTintImage. Starts fully transparent. */
+	UPROPERTY()
+	TObjectPtr<UImage> RoomFadeImage;
+
+	/** True while StartRoomFadeOut/StartRoomFadeIn's animated ramp is in progress; UpdateRoomFade no-ops entirely while false. */
+	bool bRoomFadeActive = false;
+
+	/** GetWorld()->GetTimeSeconds() at the moment the current fade (in or out) started. */
+	float RoomFadeStartTime = 0.f;
+
+	/** How long (seconds) the current fade animation takes -- the Duration passed into the most recent StartRoomFadeOut/StartRoomFadeIn call. */
+	float RoomFadeDuration = 0.35f;
+
+	/** Opacity StartRoomFadeOut/StartRoomFadeIn began animating from -- lets UpdateRoomFade lerp correctly even if a fade is (re)started mid-animation rather than always assuming a 0/1 starting point. */
+	float RoomFadeStartOpacity = 0.f;
+
+	/** Opacity the current fade animation is ramping TOWARD -- 1.0 for a fade-out (to black), 0.0 for a fade-in (back to the scene). */
+	float RoomFadeTargetOpacity = 0.f;
 };

@@ -312,6 +312,29 @@ bool UGnarlyRankHUDWidget::Initialize()
 
 		// Hidden until the first ShowQuip call -- no quip has fired yet at HUD construction time.
 		SetQuipVisualsOpacity(0.f);
+
+		// Room transition fade: added LAST, after every other child above, so it paints over the
+		// whole HUD (including the low-health tint and quip box) rather than being obscured by
+		// them -- canvas children later in add-order render on top of earlier ones, the exact
+		// opposite reasoning from why LowHealthTintImage was added FIRST. Same full-screen-stretch
+		// construction technique as that tint (WhiteSquareTexture tinted via SetColorAndOpacity),
+		// just black instead of red and starting fully transparent.
+		RoomFadeImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("RoomFadeImage"));
+		if (UTexture2D* WhiteTexture = LoadObject<UTexture2D>(nullptr, WhiteSquarePath))
+		{
+			RoomFadeImage->SetBrushFromTexture(WhiteTexture);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[ROOM FADE] Failed to load fade texture: %s"), WhiteSquarePath);
+		}
+		RoomFadeImage->SetColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.f));
+
+		if (UCanvasPanelSlot* FadeSlot = RootCanvas->AddChildToCanvas(RoomFadeImage))
+		{
+			FadeSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+			FadeSlot->SetOffsets(FMargin(0.f));
+		}
 	}
 
 	RefreshDisplay();
@@ -329,6 +352,7 @@ void UGnarlyRankHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	RefreshDisplay();
 	UpdateQuipFade();
+	UpdateRoomFade();
 }
 
 void UGnarlyRankHUDWidget::ShowQuip(const FString& Line, float DisplayDuration)
@@ -398,6 +422,66 @@ void UGnarlyRankHUDWidget::SetQuipVisualsOpacity(float Alpha)
 	{
 		QuipLineText->SetRenderOpacity(Alpha);
 		QuipLineText->SetVisibility(NewQuipVisibility);
+	}
+}
+
+void UGnarlyRankHUDWidget::StartRoomFadeOut(float Duration)
+{
+	if (!RoomFadeImage)
+	{
+		return;
+	}
+
+	RoomFadeStartOpacity = RoomFadeImage->GetColorAndOpacity().A;
+	RoomFadeTargetOpacity = 1.f;
+	RoomFadeDuration = FMath::Max(Duration, KINDA_SMALL_NUMBER);
+	RoomFadeStartTime = GetWorld()->GetTimeSeconds();
+	bRoomFadeActive = true;
+}
+
+void UGnarlyRankHUDWidget::StartRoomFadeIn(float Duration)
+{
+	if (!RoomFadeImage)
+	{
+		return;
+	}
+
+	RoomFadeStartOpacity = RoomFadeImage->GetColorAndOpacity().A;
+	RoomFadeTargetOpacity = 0.f;
+	RoomFadeDuration = FMath::Max(Duration, KINDA_SMALL_NUMBER);
+	RoomFadeStartTime = GetWorld()->GetTimeSeconds();
+	bRoomFadeActive = true;
+}
+
+void UGnarlyRankHUDWidget::SetRoomFadeOpacity(float Alpha)
+{
+	if (!RoomFadeImage)
+	{
+		return;
+	}
+
+	bRoomFadeActive = false;
+	const FLinearColor Current = RoomFadeImage->GetColorAndOpacity();
+	RoomFadeImage->SetColorAndOpacity(FLinearColor(Current.R, Current.G, Current.B, FMath::Clamp(Alpha, 0.f, 1.f)));
+}
+
+void UGnarlyRankHUDWidget::UpdateRoomFade()
+{
+	if (!bRoomFadeActive || !RoomFadeImage)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - RoomFadeStartTime;
+	const float Alpha = FMath::Clamp(Elapsed / RoomFadeDuration, 0.f, 1.f);
+	const float NewOpacity = FMath::Lerp(RoomFadeStartOpacity, RoomFadeTargetOpacity, Alpha);
+
+	const FLinearColor Current = RoomFadeImage->GetColorAndOpacity();
+	RoomFadeImage->SetColorAndOpacity(FLinearColor(Current.R, Current.G, Current.B, NewOpacity));
+
+	if (Alpha >= 1.f)
+	{
+		bRoomFadeActive = false;
 	}
 }
 

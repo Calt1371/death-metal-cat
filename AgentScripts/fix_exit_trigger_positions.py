@@ -36,9 +36,20 @@ footprint sum). RoomShell origins were NOT recomputed (import_room_geometry.py r
 from each shell's EXISTING location, it doesn't reposition shells), so 6 of the 10
 triggers/markers drifted back inside their room's widened geometry -- confirmed via direct query
 of live RoomShell locations + recomputed footprints from the rescaled JSON, not assumed. The 4
-that didn't move (ROOM4B_to_ROOM5, ROOM6_to_ROOM7, ROOM7_to_ROOM8, BiomeEndMarker_Room8) belong to
-rooms whose gaps weren't touched by the rescale, and are omitted below so this pass only touches
-the packages that actually need it.
+that didn't move (ROOM4B_to_ROOM5, ROOM6_to_ROOM7, ROOM7_to_ROOM8, BiomeEndMarker_Room8) belonged to
+rooms whose gaps weren't touched by the rescale, so were omitted from that pass.
+
+UPDATED 2026-07-23 (third pass): user manually repositioned all 10 triggers/markers in-editor
+(observed platforms disappearing before they'd even jumped off them into the next room), pushing
+every one PAST its room's far edge instead of the intended 100-unit-before buffer -- by as little
+as +40 (ROOM1_to_ROOM2) up to +670 past far edge for ROOM6_to_ROOM7 specifically (which landed 370
+units inside Room7's own RoomShell origin, a clear outlier vs. every other trigger's much smaller
+overshoot). Confirmed via direct query against the second-pass values, not assumed. Reverted here
+back to the last known-correct geometry_far_edge - 100 values (the second-pass numbers above) for
+all 10, since a trigger sitting past a room's far edge risks needing solid ground that may not
+exist there if room deactivation ever hides that room's floor -- the actual disappearing-platforms
+cause is still unconfirmed and worth investigating separately, this revert just undoes the
+symptom-chasing workaround so the geometry math stays correct while that gets looked into.
 
 Invoke via:
     python send_to_ue.py "exec(open(r'C:\\Users\\calvi\\Desktop\\Projects\\PythonTest\\AgentScripts\\fix_exit_trigger_positions.py').read())"
@@ -46,14 +57,19 @@ Invoke via:
 
 import unreal
 
-# Recomputed geometry_far_edge - 100 for the 6 rooms whose gaps grew in the rescale (see docstring).
+# Reverted to geometry_far_edge - 100 for all 10 (see third-pass note above) -- the last
+# known-correct values from the second pass, undoing the user's manual overshoot.
 NEW_POSITIONS = {
     'ExitTrigger_ROOM1_to_ROOM2': 1275.0,
     'ExitTrigger_ROOM2_to_ROOM3': 2915.0,
     'ExitTrigger_ROOM3_to_ROOM4A': 4920.0,
     'ExitTrigger_ROOM3_to_ROOM4B': 5120.0,
     'ExitTrigger_ROOM4A_to_ROOM5': 7180.0,
+    'ExitTrigger_ROOM4B_to_ROOM5': 6340.0,
     'ExitTrigger_ROOM5_to_ROOM6': 9360.0,
+    'ExitTrigger_ROOM6_to_ROOM7': 11750.0,
+    'ExitTrigger_ROOM7_to_ROOM8': 14430.0,
+    'BiomeEndMarker_Room8': 17300.0,
 }
 
 actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)

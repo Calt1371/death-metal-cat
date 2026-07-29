@@ -1,6 +1,31 @@
 """
 update_room_spacing.py
 
+*** DEPRECATED 2026-07-27 -- DO NOT RUN. Kept only for history/reference. ***
+
+Room-to-room transitions are now Hollow Knight-style fade-to-black (see
+ARoomProgressionManager::BeginRoomTransition), not continuous same-world walking, so rooms no
+longer need distinct world-space positions at all -- only one room is ever active/visible at a
+time (ARoomShell::SetRoomActive already guaranteed this), so overlapping world positions cost
+nothing. All 9 RoomShells were collapsed to Room1's original origin (-200, 0, 92.0001) in a single
+one-off pass; there is no more "spacing" for this script to maintain, and re-running it would
+un-collapse the rooms and break the fade-transition teleport's assumption that every RoomShell
+sits at the same shared position. If room positions ever need to change again, do it directly
+(they're free to move anywhere now, individually or all together) rather than reviving this
+chain-computation approach.
+
+Verified after the collapse (2026-07-27, live-queried, not assumed): every exit trigger's offset
+relative to its OWN room's shell was already exactly "that room's real footprint - 100" (the
+Room3->4B branch's +200 stagger included) even before this deprecation, since that offset was
+always local math relative to the room's own shell, never actually dependent on any OTHER room's
+position -- only the shell's own absolute origin needed this script's cross-room chain. Collapsing
+the shells (a pure translation, preserving each attached child's relative offset) therefore left
+every trigger already correctly positioned relative to its own room's real current geometry, with
+zero additional per-trigger repositioning needed. Confirmed for all 9 rooms + the biome end marker,
+delta=0.0 in every case.
+
+---- Original docstring, describing what this script did while it was still in use: ----
+
 Recomputes each RoomShell's X origin dynamically from the ACTUAL footprint of its generated room
 geometry (Tools/room_geometry_<RoomID>.json, produced by Tools/room_geometry_designer.py),
 replacing the original room-progression build's fixed 1500-unit placeholder spacing. Chain rule:

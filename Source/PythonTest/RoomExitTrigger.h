@@ -11,11 +11,12 @@ struct FHitResult;
 
 /**
  * Placed at a room's exit doorway. The first time the player character overlaps this volume, it
- * fires ARoomProgressionManager::AdvanceToRoom(NextRoomID) and then never fires again (bHasFired
- * guard) -- redundant with NextRoomID's own room being deactivated behind the player anyway once
- * they've moved on, but cheap insurance against a same-frame double-overlap. Re-armed via
- * ResetTrigger() when ARoomProgressionManager::ResetToStartingRoom() runs on player death, so a
- * second pass through an already-cleared room still fires correctly.
+ * fires ARoomProgressionManager::BeginRoomTransition(NextRoomID) (fade to black, switch rooms and
+ * teleport during the pause, fade back in) and then never fires again (bHasFired guard) --
+ * redundant with NextRoomID's own room being deactivated behind the player anyway once they've
+ * moved on, but cheap insurance against a same-frame double-overlap. Re-armed via ResetTrigger()
+ * when ARoomProgressionManager::ResetToStartingRoom() runs on player death, so a second pass
+ * through an already-cleared room still fires correctly.
  *
  * Room3's branch choice is just two of these placed side by side (or stacked as an upper/lower
  * doorway) with NextRoomID set to Room4A on one and Room4B on the other -- whichever the player

@@ -228,11 +228,16 @@ protected:
 	void HandleDeath();
 
 	/**
-	 * Timer callback from HandleDeath: resets Health to MaxHealth, restores InitialSpawnTransform,
-	 * clears bIsDead, re-enables input, and starts a brief post-respawn invincibility window (see
-	 * PostRespawnInvulnDuration) by reusing the exact same bIsInvincible/IFrameTimerHandle/
-	 * ClearInvincibility mechanism Dodge's i-frames use, so respawning doesn't immediately re-die
-	 * standing in the same spot.
+	 * Timer callback from HandleDeath: resets Health to MaxHealth, clears bIsDead, and starts a
+	 * brief post-respawn invincibility window (see PostRespawnInvulnDuration) by reusing the exact
+	 * same bIsInvincible/IFrameTimerHandle/ClearInvincibility mechanism Dodge's i-frames use, so
+	 * respawning doesn't immediately re-die standing in the same spot. Does NOT teleport the
+	 * character or re-enable input directly anymore -- those now happen inside
+	 * ARoomProgressionManager::BeginRoomTransition (teleport during the black pause, input
+	 * re-enabled at fade-in-complete), triggered here via ResetToStartingRoom(), so the death
+	 * restart gets the same fade-to-black treatment as every other room change. InitialSpawnTransform
+	 * is still cached in BeginPlay but is no longer read anywhere -- kept in case something else
+	 * needs the raw PlayerStart-derived transform later.
 	 */
 	void HandleRespawn();
 
@@ -316,6 +321,9 @@ public:
 	 */
 	UFUNCTION(Exec)
 	void TestJumpDistance(const FString& JumpTypeName);
+
+	/** Public accessor for GnarlyRankHUDWidgetInstance -- ARoomProgressionManager::BeginRoomTransition needs to drive the room-transition fade (StartRoomFadeOut/StartRoomFadeIn) on it, and can't reach a private member of another class directly. May return nullptr before NotifyControllerChanged has ever created the widget. */
+	UGnarlyRankHUDWidget* GetGnarlyRankHUDWidget() const { return GnarlyRankHUDWidgetInstance; }
 
 	/** Tick-driven follow-up to TestJumpDistance -- holds forward input every frame and detects landing (see TestJumpDistance's own doc comment). No-ops entirely while bJumpDistanceTestActive is false. */
 	void UpdateJumpDistanceTest();

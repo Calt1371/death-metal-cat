@@ -64,9 +64,19 @@ ROOM_ROLES = ("linear", "branch_a", "branch_b")
 #     movement): 647.11 units measured -- meaningfully short of the running-jump distance because
 #     of the accel ramp-up, and the correct conservative ceiling for "is this gap EVER crossable"
 #     (a room can't assume the player has a run-up before every gap).
+#
+# UPDATED 2026-07-29: JumpZVelocity raised again 600->708.652466 (further live-PIE jump-height
+# tuning; value read directly off the live CharacterMovementComponent, not guessed). GRAVITY_Z
+# re-verified live against PhysicsSettings.default_gravity_z -- still -980.0, unchanged.
+# MAX_JUMP_HEIGHT recomputes automatically from the formula below. MAX_JUMP_DISTANCE and
+# MAX_JUMP_DISTANCE_RUNNING, however, are still the OLD empirically-measured values from the
+# JumpZVelocity=600 pass -- a higher JumpZVelocity means more airtime, which (with AirControl=1.0)
+# also extends real horizontal reach, so both distance constants need a fresh TestJumpDistance
+# remeasurement before they can be trusted again. Not done here since this pass only touched
+# MAX_JUMP_HEIGHT.
 GRAVITY_Z = 980.0  # magnitude, uu/s^2
 
-JUMP_Z_VELOCITY = 600.0
+JUMP_Z_VELOCITY = 708.652466
 MAX_WALK_SPEED = 600.0
 # Full jump-arc height: v^2 / (2g).
 MAX_JUMP_HEIGHT = JUMP_Z_VELOCITY ** 2 / (2 * GRAVITY_Z)
@@ -77,6 +87,8 @@ MAX_JUMP_HEIGHT = JUMP_Z_VELOCITY ** 2 / (2 * GRAVITY_Z)
 # even with zero run-up. MAX_JUMP_DISTANCE_RUNNING is informational only -- this tool doesn't
 # currently distinguish a "comfortable" vs "maximum" gap tier, so it isn't used as a bound
 # anywhere yet, but is kept here in case that distinction gets added later.
+# STALE as of 2026-07-29 (see comment above) -- still reflects JumpZVelocity=600, not the current
+# 708.652466. Needs a fresh TestJumpDistance PIE remeasurement.
 MAX_JUMP_DISTANCE = 647.11
 MAX_JUMP_DISTANCE_RUNNING = 740.01
 

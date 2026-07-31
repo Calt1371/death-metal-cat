@@ -1,0 +1,425 @@
+{
+  "biome": "AssassinCity",
+  "source_room": "ROOM1",
+  "movement_constants": {
+    "gravity_z": 980.0,
+    "jump_z_velocity": 773.22265625,
+    "max_walk_speed": 600.0,
+    "max_jump_height": 305.03738578484985,
+    "max_jump_distance": 946.8032525510205,
+    "wall_jump_force_horizontal": 600.0,
+    "wall_jump_force_vertical": 699.23876953125,
+    "wall_jump_max_height": 249.45655959978396,
+    "wall_jump_max_distance": 856.2107382015307,
+    "dodge_impulse_strength": 1200.0,
+    "dodge_duration": 0.75,
+    "dodge_distance": 900.0
+  },
+  "gameplay_spacing": {
+    "gaps": [
+      {
+        "from": [
+          -1375.4999976418912,
+          810.0
+        ],
+        "to": [
+          -1391.000008694828,
+          890.0
+        ],
+        "distance": 15.50001105293677,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          -1944.5,
+          1000.0
+        ],
+        "to": [
+          -1676.499993596226,
+          1160.0
+        ],
+        "distance": 268.000006403774,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          -219.49999688193202,
+          900.0
+        ],
+        "to": [
+          -380.5,
+          1080.0
+        ],
+        "distance": 161.00000311806798,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          -462.00000308454037,
+          780.0
+        ],
+        "to": [
+          -219.49999688193202,
+          900.0
+        ],
+        "distance": 242.50000620260835,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          949.5,
+          1320.0
+        ],
+        "to": [
+          1106.0000056773424,
+          1510.0
+        ],
+        "distance": 156.50000567734241,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          429.5,
+          1174.0001545981795
+        ],
+        "to": [
+          670.5,
+          1320.0
+        ],
+        "distance": 241.0,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          59.49999688193202,
+          900.0
+        ],
+        "to": [
+          150.5,
+          1174.0001545981795
+        ],
+        "distance": 91.00000311806798,
+        "reachable_by": [
+          "jump"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          150.5,
+          1174.0001545981795
+        ],
+        "to": [
+          -20.5,
+          1550.0
+        ],
+        "distance": 171.0,
+        "reachable_by": [],
+        "tolerance": "tight"
+      },
+      {
+        "from": [
+          -380.5,
+          1080.0
+        ],
+        "to": [
+          -299.5,
+          1550.0
+        ],
+        "distance": 81.0,
+        "reachable_by": [],
+        "tolerance": "tight"
+      },
+      {
+        "from": [
+          -2064.5,
+          494.0001
+        ],
+        "to": [
+          -2063.0,
+          494.0001
+        ],
+        "distance": 1.5,
+        "reachable_by": [
+          "jump",
+          "wall_jump",
+          "dodge"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
+          670.5,
+          1320.0
+        ],
+        "to": [
+          -20.5,
+          1550.0
+        ],
+        "distance": 691.0,
+        "reachable_by": [
+          "jump",
+          "wall_jump"
+        ],
+        "tolerance": "comfortable"
+      }
+    ],
+    "enemy_spacing": []
+  },
+  "art_placement": {
+    "background": [
+      {
+        "name": "Background_Skyline",
+        "class": "PaperSpriteActor",
+        "position": [
+          -502.5,
+          -860.0,
+          1180.0000000000025
+        ],
+        "offset_from_plane": -860.0
+      },
+      {
+        "name": "Background_MidgroundCity",
+        "class": "PaperSpriteActor",
+        "position": [
+          -230.8365535315088,
+          -855.0000621936942,
+          661.5896660343274
+        ],
+        "offset_from_plane": -855.0000621936942
+      }
+    ],
+    "midground": [
+      {
+        "name": "OneWayPlatform2",
+        "class": "OneWayPlatform",
+        "position": [
+          -1270.0,
+          70.0,
+          790.0
+        ],
+        "offset_from_plane": 70.0
+      },
+      {
+        "name": "OneWayPlatform3",
+        "class": "OneWayPlatform",
+        "position": [
+          -1780.0,
+          80.0,
+          870.0
+        ],
+        "offset_from_plane": 80.0
+      },
+      {
+        "name": "OneWayPlatform4",
+        "class": "OneWayPlatform",
+        "position": [
+          -2050.0,
+          70.0,
+          980.0
+        ],
+        "offset_from_plane": 70.0
+      },
+      {
+        "name": "OneWayPlatform5",
+        "class": "OneWayPlatform",
+        "position": [
+          -1390.0,
+          70.0,
+          1140.0
+        ],
+        "offset_from_plane": 70.0
+      },
+      {
+        "name": "OneWayPlatform6",
+        "class": "OneWayPlatform",
+        "position": [
+          -1830.0,
+          70.0,
+          1360.0
+        ],
+        "offset_from_plane": 70.0
+      },
+      {
+        "name": "OneWayPlatform7",
+        "class": "OneWayPlatform",
+        "position": [
+          -80.0,
+          30.0,
+          880.0
+        ],
+        "offset_from_plane": 30.0
+      },
+      {
+        "name": "OneWayPlatform8",
+        "class": "OneWayPlatform",
+        "position": [
+          -600.0,
+          70.0,
+          760.0
+        ],
+        "offset_from_plane": 70.0
+      },
+      {
+        "name": "OneWayPlatform10",
+        "class": "OneWayPlatform",
+        "position": [
+          -520.0,
+          30.0,
+          1060.0
+        ],
+        "offset_from_plane": 30.0
+      },
+      {
+        "name": "OneWayPlatform11",
+        "class": "OneWayPlatform",
+        "position": [
+          810.0,
+          30.0,
+          1300.0
+        ],
+        "offset_from_plane": 30.0
+      },
+      {
+        "name": "OneWayPlatform12",
+        "class": "OneWayPlatform",
+        "position": [
+          1360.0,
+          30.0,
+          1490.0
+        ],
+        "offset_from_plane": 30.0
+      },
+      {
+        "name": "OneWayPlatform13",
+        "class": "OneWayPlatform",
+        "position": [
+          1300.0,
+          30.0,
+          880.0
+        ],
+        "offset_from_plane": 30.0
+      },
+      {
+        "name": "OneWayPlatform14",
+        "class": "OneWayPlatform",
+        "position": [
+          290.0,
+          49.9999999999999,
+          1154.0001545981795
+        ],
+        "offset_from_plane": 49.9999999999999
+      },
+      {
+        "name": "OneWayPlatform15",
+        "class": "OneWayPlatform",
+        "position": [
+          -160.0,
+          30.0,
+          1530.0
+        ],
+        "offset_from_plane": 30.0
+      },
+      {
+        "name": "Structure_ROOM1_08_RightStructure",
+        "class": "PaperSpriteActor",
+        "position": [
+          1350.0,
+          -70.0,
+          1049.1181038452148
+        ],
+        "offset_from_plane": -70.0
+      },
+      {
+        "name": "ExitTrigger_ROOM1_to_ROOM2",
+        "class": "RoomExitTrigger",
+        "position": [
+          1644.0,
+          0.0,
+          622.0001
+        ],
+        "offset_from_plane": 0.0
+      },
+      {
+        "name": "Structure_ROOM1_00_LeftStructure",
+        "class": "PaperSpriteActor",
+        "position": [
+          -1530.0,
+          -50.0,
+          940.3692024780273
+        ],
+        "offset_from_plane": -50.0
+      },
+      {
+        "name": "Floor_ROOM1_00_FlatRun2",
+        "class": "StaticMeshActor",
+        "position": [
+          -2764.5,
+          0.0,
+          484.0001
+        ],
+        "offset_from_plane": 0.0
+      },
+      {
+        "name": "Floor_ROOM1_00_FlatRun",
+        "class": "StaticMeshActor",
+        "position": [
+          315.5,
+          0.0,
+          484.0001
+        ],
+        "offset_from_plane": 0.0
+      }
+    ],
+    "foreground": [
+      {
+        "name": "ForeGroundCable",
+        "class": "PaperSpriteActor",
+        "position": [
+          -330.8365539999995,
+          214.99993800000004,
+          1871.5896659999999
+        ],
+        "offset_from_plane": 214.99993800000004
+      }
+    ],
+    "layer_depth_ranges": {
+      "background": [
+        -860.0,
+        -855.0000621936942
+      ],
+      "midground": [
+        -70.0,
+        80.0
+      ],
+      "foreground": [
+        214.99993800000004,
+        214.99993800000004
+      ]
+    }
+  }
+}

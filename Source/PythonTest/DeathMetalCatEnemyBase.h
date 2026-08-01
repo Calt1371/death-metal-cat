@@ -8,6 +8,17 @@
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class ADeathMetalCatCharacter;
+class UPaperFlipbookComponent;
+class UPaperFlipbook;
+class AEnemyProjectile;
+
+/** Internal-only (not exposed to Blueprint) phase tracking for the ranged-attack burst sequence -- same pattern as ADeathMetalCatCharacter's own EShootPhase. */
+enum class EEnemyShootPhase : uint8
+{
+	None,
+	Drawing,
+	Firing,
+};
 
 /**
  * Base enemy class: Character-derived (capsule collision + movement component, for whatever
@@ -33,20 +44,38 @@ class ADeathMetalCatCharacter;
  * player is within DetectionRadius (a plain 3D distance check, not vision/line-of-sight), this
  * actor calls AddMovementInput straight toward the player's X position (the only axis that
  * matters -- Y/Z are already locked to the player's plane, see the BeginPlay snap above) until
- * within MeleeRange, then stops. Contact damage is gated purely on plain 3D distance to the
- * player each Tick (distance <= MeleeRange), combined with ContactDamageCooldown -- deliberately
- * NOT overlap-event-driven: the enemy and player capsules both use the stock "Pawn" collision
- * profile, which is a Block/Block relationship (see UCharacterMovementComponent default pawn
- * collision), so they can never actually generate a BeginOverlap/EndOverlap against each other in
- * the first place -- an earlier revision of this class bound contact damage to the capsule's own
- * OnComponentBeginOverlap/EndOverlap, which in practice only ever fired from the player's
- * SwordHitbox (a separate, deliberately overlap-everything component) grazing the capsule
- * mid-swing, misidentified as "player contact" since the check only compared OtherActor, not
- * OtherComp. Distance-based gating avoids that whole class of collision-response mismatch.
- * Damage applies via the same UGameplayStatics::ApplyDamage path everything else in this game
- * uses; the player's own TakeDamage handles CanTakeDamage()/i-frames entirely, this class never
- * checks or duplicates that. No attack animation in this pass -- contact is the whole attack,
- * animation is a separate future task.
+ * within ShootRange, then stops (see the three concentric bands below). Contact damage is gated
+ * purely on plain 3D distance to the player each Tick (distance <= MeleeRange), combined with
+ * ContactDamageCooldown -- deliberately NOT overlap-event-driven: the enemy and player capsules
+ * both use the stock "Pawn" collision profile, which is a Block/Block relationship (see
+ * UCharacterMovementComponent default pawn collision), so they can never actually generate a
+ * BeginOverlap/EndOverlap against each other in the first place -- an earlier revision of this
+ * class bound contact damage to the capsule's own OnComponentBeginOverlap/EndOverlap, which in
+ * practice only ever fired from the player's SwordHitbox (a separate, deliberately
+ * overlap-everything component) grazing the capsule mid-swing, misidentified as "player contact"
+ * since the check only compared OtherActor, not OtherComp. Distance-based gating avoids that
+ * whole class of collision-response mismatch. Damage applies via the same
+ * UGameplayStatics::ApplyDamage path everything else in this game uses; the player's own
+ * TakeDamage handles CanTakeDamage()/i-frames entirely, this class never checks or duplicates
+ * that.
+ *
+ * Three concentric distance bands (MeleeRange < ShootRange < DetectionRadius), checked every Tick:
+ *   0..MeleeRange           -- contact damage (as above), stopped, no ranged attack.
+ *   MeleeRange..ShootRange  -- stopped, plays the ranged-attack burst (see BeginRangedAttack).
+ *   ShootRange..DetectionRadius -- advances toward the player (the old single-band chase).
+ * Facing (flipbook's Scale.X sign) is updated whenever the player is within DetectionRadius,
+ * regardless of which band -- same convention ADeathMetalCatCharacter's own UpdateAnimation uses
+ * for its sprite (Scale.X >= 0 faces +X/right, < 0 faces -X/left), so the enemy always faces
+ * whichever direction the player currently is, not just while physically advancing.
+ *
+ * Ranged attack (BeginRangedAttack/BeginBurstLoop/FireOneShot): mirrors
+ * ADeathMetalCatCharacter's own Drawing/HoldFiring hold-fire architecture. A single-frame windup
+ * (ShootDrawFlipbook) plays once for ShootDrawDuration, then the loop flipbook (ShootLoopFlipbook)
+ * takes over and fires one projectile per loop frame shown (a fixed-count burst, not continuous
+ * fire), after which ShootBurstCooldown gates the next burst attempt. Projectiles are real
+ * traveling actors (AEnemyProjectile, UProjectileMovementComponent-driven, non-homing, aimed at
+ * the player's position at the instant each shot fires), not hitscan -- deliberately dodgeable,
+ * unlike the player's own instant-hitscan gun.
  */
 UCLASS()
 class PYTHONTEST_API ADeathMetalCatEnemyBase : public ACharacter
@@ -81,11 +110,9 @@ public:
 	float MoveSpeed = 200.f;
 
 	/**
-	 * Dual-purpose range (uu), checked every Tick: (1) the X-distance at which the enemy stops
-	 * advancing, so it doesn't overshoot past the player, and (2) the plain 3D distance within
-	 * which contact damage is allowed to apply (gated by ContactDamageCooldown). Deliberately the
-	 * same property for both -- "close enough to stop chasing" and "close enough to hit" are the
-	 * same concept for this minimal contact-attack enemy. Placeholder value, tune freely.
+	 * Plain 3D distance (uu) within which the enemy stops to deal contact damage instead of
+	 * advancing or ranged-attacking. Must stay smaller than ShootRange -- see the class comment's
+	 * three-band breakdown. Placeholder value, tune freely.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float MeleeRange = 100.f;
@@ -98,6 +125,39 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float ContactDamageCooldown = 1.0f;
 
+	/**
+	 * Plain 3D distance (uu) within which the enemy stops advancing and starts the ranged-attack
+	 * burst instead, as long as the player is also outside MeleeRange (see the class comment's
+	 * three-band breakdown). Must stay larger than MeleeRange and smaller than or equal to
+	 * DetectionRadius. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
+	float ShootRange = 500.f;
+
+	/** Speed (uu/s) each spawned projectile travels in a straight line -- not homing, aimed at the player's position at the instant it's fired. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
+	float ProjectileSpeed = 800.f;
+
+	/** Damage a projectile deals on hitting the player, via the same ApplyDamage path as contact damage. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
+	float ProjectileDamage = 8.f;
+
+	/** Seconds a projectile survives before self-destructing if it never hits the player -- at a constant ProjectileSpeed this also caps its effective max range. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
+	float ProjectileLifetime = 2.0f;
+
+	/** Seconds of windup (ShootDrawFlipbook shown, not yet firing) before the burst loop starts. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
+	float ShootDrawDuration = 0.15f;
+
+	/** Minimum seconds after a burst ends before the enemy can begin another one. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
+	float ShootBurstCooldown = 2.0f;
+
+	/** Actor class spawned by each shot in a burst -- defaults to the plain AEnemyProjectile C++ class (a small placeholder-colored sphere) in the constructor; override per-subclass if a Blueprint variant with real art is made later. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack")
+	TSubclassOf<AEnemyProjectile> ProjectileClass;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -107,14 +167,32 @@ protected:
 
 	/**
 	 * Called once, from TakeDamage, the moment Health reaches 0 (after XP has already been
-	 * awarded). Hides the actor, disables its collision, force-resets the hit-flash color
-	 * (canceling its own pending clear-timer rather than leaving it mid-transition into the
-	 * hidden/respawn window), and arms the respawn timer.
+	 * awarded). Disables collision immediately (no more hits/contact damage while dying), force-
+	 * resets the hit-flash color (canceling its own pending clear-timer rather than leaving it
+	 * mid-transition into the death sequence), and starts the death-blink toggle instead of hiding
+	 * outright -- see TickDeathBlink.
 	 */
 	void HandleDeath();
 
+	/**
+	 * Timer callback, repeating every DeathBlinkInterval: toggles visibility on/off (a "blink"
+	 * effect) DeathBlinkCount times, then hides for good and arms the respawn timer. Runs after
+	 * collision is already disabled (see HandleDeath), so the blinking corpse can't be hit again or
+	 * still deal contact damage.
+	 */
+	void TickDeathBlink();
+
 	/** Timer callback from HandleDeath: resets Health to MaxHealth, re-enables collision/visibility, and restores the actor to InitialSpawnTransform. */
 	void HandleRespawn();
+
+	/** Starts a ranged-attack burst: sets ShootPhase to Drawing, shows ShootDrawFlipbook (or skips straight to BeginBurstLoop if unset), arms a ShootDrawDuration timer. Called from Tick once the player enters the ShootRange band with the burst cooldown elapsed. */
+	void BeginRangedAttack();
+
+	/** Timer callback from BeginRangedAttack: sets ShootPhase to Firing, shows ShootLoopFlipbook looping, resets ShotsFiredInBurst, and fires the first shot immediately before arming the repeating per-shot timer. */
+	void BeginBurstLoop();
+
+	/** Repeating timer callback during Firing (interval = 1 / ShootLoopFlipbook's own frame rate, so each shot lines up with a flash frame): spawns one AEnemyProjectile aimed at the player's current position, increments ShotsFiredInBurst, and ends the burst (clearing the timer, ShootPhase back to None, arming ShootBurstCooldown) once the loop flipbook's frame count has been matched. */
+	void FireOneShot();
 
 	/** Placeholder visual (an engine basic-shape mesh) standing in for real enemy art. Scaled to roughly fill the default ACharacter capsule; retune if capsule size changes. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visual", meta = (AllowPrivateAccess = "true"))
@@ -136,12 +214,47 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))
 	float HitFlashDuration = 0.15f;
 
+	/** How many on/off visibility toggles the death-blink does before disappearing for good. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))
+	int32 DeathBlinkCount = 6;
+
+	/** Seconds between each death-blink visibility toggle. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))
+	float DeathBlinkInterval = 0.08f;
+
+	/**
+	 * Flipbook shown while not advancing on or attacking the player. Optional -- subclasses with no
+	 * real art yet (or no visible difference between standing still and moving, e.g. a hovering
+	 * flyer) can leave this and the two below unset; Tick's flipbook switching only ever touches
+	 * whatever PaperFlipbookComponent it finds on the actor (native or Blueprint-added, doesn't
+	 * matter -- found generically via FindComponentByClass) and no-ops entirely if none is present,
+	 * so this is purely additive and doesn't affect PlaceholderMesh-only subclasses at all.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
+	TObjectPtr<UPaperFlipbook> IdleFlipbook = nullptr;
+
+	/** Flipbook shown while actively advancing toward the player (see the DetectionRadius/MeleeRange chase logic in Tick). Optional -- falls back to whatever's currently playing if unset. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
+	TObjectPtr<UPaperFlipbook> WalkFlipbook = nullptr;
+
+	/** Single-frame windup pose shown once at the start of a ranged-attack burst, before the loop takes over. Optional -- if unset, BeginRangedAttack skips straight to the loop with no windup delay. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
+	TObjectPtr<UPaperFlipbook> ShootDrawFlipbook = nullptr;
+
+	/** Looping muzzle-flash animation shown for the sustained part of a ranged-attack burst -- one projectile fires per loop frame shown. Optional -- falls back to whatever's currently playing if unset (the burst still fires normally, just without a matching animation). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
+	TObjectPtr<UPaperFlipbook> ShootLoopFlipbook = nullptr;
+
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> DynamicMaterial;
 
 	FTimerHandle HitFlashTimerHandle;
 	FTimerHandle RespawnTimerHandle;
+	FTimerHandle DeathBlinkTimerHandle;
+
+	/** Remaining toggles left in the current death-blink sequence; counts down to 0 in TickDeathBlink. */
+	int32 RemainingDeathBlinks = 0;
 
 	/** Actor transform cached in BeginPlay -- where HandleRespawn puts the actor back after RespawnDelay. */
 	FTransform InitialSpawnTransform;
@@ -155,4 +268,25 @@ private:
 
 	/** World time (GetWorld()->GetTimeSeconds()) contact damage was last applied; compared against ContactDamageCooldown. Starts far enough negative that the very first contact always damages immediately; reset to that same sentinel in HandleDeath so a respawned enemy doesn't inherit a stale cooldown from its previous life. */
 	float LastContactDamageTime = -1000.f;
+
+	/**
+	 * Resolved lazily in Tick via FindComponentByClass -- finds whatever PaperFlipbookComponent
+	 * exists on this actor regardless of whether it's a native C++ member or added via a Blueprint
+	 * subclass's construction script (both show up identically at the instance level). Stays null
+	 * (and the flipbook-switching block in Tick just no-ops) for subclasses with no such component,
+	 * e.g. the original placeholder-cylinder-only BP_EnemyBase.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UPaperFlipbookComponent> CachedFlipbookComponent;
+
+	EEnemyShootPhase ShootPhase = EEnemyShootPhase::None;
+
+	/** Shots fired so far in the current burst; compared against ShootLoopFlipbook's own frame count in FireOneShot to know when the burst ends. */
+	int32 ShotsFiredInBurst = 0;
+
+	FTimerHandle ShootDrawTimerHandle;
+	FTimerHandle ShootBurstTimerHandle;
+
+	/** World time (GetWorld()->GetTimeSeconds()) the last burst ended; compared against ShootBurstCooldown, same sentinel-start/reset-on-death convention as LastContactDamageTime. */
+	float LastBurstEndTime = -1000.f;
 };

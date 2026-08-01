@@ -8,6 +8,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/DamageType.h"
+#include "PaperFlipbookComponent.h"
+#include "PaperFlipbook.h"
+#include "EnemyProjectile.h"
 
 ADeathMetalCatEnemyBase::ADeathMetalCatEnemyBase()
 {
@@ -68,6 +71,11 @@ ADeathMetalCatEnemyBase::ADeathMetalCatEnemyBase()
 		SkeletalMesh->SetVisibility(false);
 		SkeletalMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
+
+	// Default projectile class -- works out of the box (a small placeholder-colored sphere) with
+	// zero Blueprint setup required; override ProjectileClass per-subclass if a Blueprint variant
+	// with real art is made later.
+	ProjectileClass = AEnemyProjectile::StaticClass();
 }
 
 void ADeathMetalCatEnemyBase::BeginPlay()
@@ -127,27 +135,173 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 		MoveComp->MaxWalkSpeed = MoveSpeed;
 	}
 
+	// Finds whatever PaperFlipbookComponent exists on this actor regardless of whether it's
+	// native or Blueprint-added (see CachedFlipbookComponent's own comment); stays null (and every
+	// flipbook-touching block below no-ops) for subclasses with no such component.
+	if (!CachedFlipbookComponent)
+	{
+		CachedFlipbookComponent = FindComponentByClass<UPaperFlipbookComponent>();
+	}
+
 	const FVector MyLocation = GetActorLocation();
 	const FVector PlayerLocation = CachedPlayerCharacter->GetActorLocation();
 	const float DistanceToPlayer = FVector::Dist(MyLocation, PlayerLocation);
+	const float XDistance = PlayerLocation.X - MyLocation.X;
 
-	if (DistanceToPlayer <= DetectionRadius)
+	// Facing: whenever the player is within DetectionRadius at all (any band), face toward them --
+	// same Scale.X-sign convention ADeathMetalCatCharacter's own UpdateAnimation uses for its own
+	// sprite (>= 0 faces +X/right, < 0 faces -X/left). Deliberately not gated on bIsAdvancing --
+	// the enemy should keep facing the player even while stopped for melee/ranged attacks.
+	if (CachedFlipbookComponent && DistanceToPlayer <= DetectionRadius && FMath::Abs(XDistance) > KINDA_SMALL_NUMBER)
 	{
-		const float XDistance = PlayerLocation.X - MyLocation.X;
-		if (FMath::Abs(XDistance) > MeleeRange)
+		FVector Scale = CachedFlipbookComponent->GetRelativeScale3D();
+		const float DesiredSign = (XDistance < 0.f) ? -1.f : 1.f;
+		if (!FMath::IsNearlyEqual(FMath::Sign(Scale.X), DesiredSign))
 		{
-			AddMovementInput(FVector(FMath::Sign(XDistance), 0.f, 0.f), 1.f);
+			Scale.X = DesiredSign * FMath::Abs(Scale.X);
+			CachedFlipbookComponent->SetRelativeScale3D(Scale);
 		}
 	}
 
-	if (DistanceToPlayer <= MeleeRange)
+	// Three concentric bands -- see the class comment. A burst already in progress (Drawing/
+	// Firing) runs to completion regardless of the player's exact position once started, so all of
+	// this is skipped entirely while ShootPhase != None.
+	bool bIsAdvancing = false;
+	const bool bIsInMeleeRange = DistanceToPlayer <= MeleeRange;
+	const bool bIsInShootBand = !bIsInMeleeRange && DistanceToPlayer <= ShootRange;
+
+	if (ShootPhase == EEnemyShootPhase::None)
 	{
-		const float CurrentTime = GetWorld()->GetTimeSeconds();
-		if (CurrentTime - LastContactDamageTime >= ContactDamageCooldown)
+		if (bIsInMeleeRange)
 		{
-			UGameplayStatics::ApplyDamage(CachedPlayerCharacter, ContactDamage, GetController(), this, UDamageType::StaticClass());
-			LastContactDamageTime = CurrentTime;
+			const float CurrentTime = GetWorld()->GetTimeSeconds();
+			if (CurrentTime - LastContactDamageTime >= ContactDamageCooldown)
+			{
+				UGameplayStatics::ApplyDamage(CachedPlayerCharacter, ContactDamage, GetController(), this, UDamageType::StaticClass());
+				LastContactDamageTime = CurrentTime;
+			}
 		}
+		else if (bIsInShootBand)
+		{
+			const float CurrentTime = GetWorld()->GetTimeSeconds();
+			if (CurrentTime - LastBurstEndTime >= ShootBurstCooldown)
+			{
+				BeginRangedAttack();
+			}
+		}
+		else if (DistanceToPlayer <= DetectionRadius)
+		{
+			AddMovementInput(FVector(FMath::Sign(XDistance), 0.f, 0.f), 1.f);
+			bIsAdvancing = true;
+		}
+	}
+
+	// Idle/Walk flipbook selection -- skipped entirely while a burst owns the flipbook
+	// (BeginRangedAttack/BeginBurstLoop set ShootDrawFlipbook/ShootLoopFlipbook themselves for the
+	// duration of Drawing/Firing).
+	if (CachedFlipbookComponent && ShootPhase == EEnemyShootPhase::None)
+	{
+		UPaperFlipbook* DesiredFlipbook = CachedFlipbookComponent->GetFlipbook();
+		if (bIsAdvancing && WalkFlipbook)
+		{
+			DesiredFlipbook = WalkFlipbook;
+		}
+		else if (IdleFlipbook)
+		{
+			DesiredFlipbook = IdleFlipbook;
+		}
+
+		// TEMPORARY debug logging for the "always left leg" walk-animation investigation --
+		// remove once resolved.
+		static int32 DebugLogThrottle = 0;
+		if (DesiredFlipbook != CachedFlipbookComponent->GetFlipbook())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[WALK ANIM DEBUG] t=%f TRANSITION bIsAdvancing=%d -> new flipbook=%s (was frame %d)"),
+				GetWorld()->GetTimeSeconds(), bIsAdvancing,
+				DesiredFlipbook ? *DesiredFlipbook->GetName() : TEXT("null"),
+				CachedFlipbookComponent->GetPlaybackPositionInFrames());
+			CachedFlipbookComponent->SetFlipbook(DesiredFlipbook);
+		}
+		else if (bIsAdvancing && (++DebugLogThrottle % 6 == 0))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[WALK ANIM DEBUG] t=%f steady bIsAdvancing=1 flipbook=%s frame=%d playing=%d looping=%d ScaleX=%.2f"),
+				GetWorld()->GetTimeSeconds(),
+				*CachedFlipbookComponent->GetFlipbook()->GetName(),
+				CachedFlipbookComponent->GetPlaybackPositionInFrames(),
+				CachedFlipbookComponent->IsPlaying(), CachedFlipbookComponent->IsLooping(),
+				CachedFlipbookComponent->GetRelativeScale3D().X);
+		}
+	}
+}
+
+void ADeathMetalCatEnemyBase::BeginRangedAttack()
+{
+	ShootPhase = EEnemyShootPhase::Drawing;
+
+	if (CachedFlipbookComponent && ShootDrawFlipbook)
+	{
+		CachedFlipbookComponent->SetFlipbook(ShootDrawFlipbook);
+		CachedFlipbookComponent->SetLooping(false);
+		CachedFlipbookComponent->PlayFromStart();
+		GetWorldTimerManager().SetTimer(ShootDrawTimerHandle, this, &ADeathMetalCatEnemyBase::BeginBurstLoop, ShootDrawDuration, false);
+	}
+	else
+	{
+		// No windup art configured for this subclass -- skip straight to the firing loop.
+		BeginBurstLoop();
+	}
+}
+
+void ADeathMetalCatEnemyBase::BeginBurstLoop()
+{
+	ShootPhase = EEnemyShootPhase::Firing;
+	ShotsFiredInBurst = 0;
+
+	if (CachedFlipbookComponent && ShootLoopFlipbook)
+	{
+		CachedFlipbookComponent->SetFlipbook(ShootLoopFlipbook);
+		CachedFlipbookComponent->SetLooping(true);
+		CachedFlipbookComponent->PlayFromStart();
+	}
+
+	// Per-shot interval matches the loop flipbook's own frame rate, so each shot lines up with a
+	// flash frame actually being shown on screen -- falls back to a reasonable default if this
+	// subclass has no loop flipbook configured.
+	const float FrameRate = ShootLoopFlipbook ? ShootLoopFlipbook->GetFramesPerSecond() : 8.f;
+	const float ShotInterval = (FrameRate > 0.f) ? (1.f / FrameRate) : 0.125f;
+
+	FireOneShot();
+	GetWorldTimerManager().SetTimer(ShootBurstTimerHandle, this, &ADeathMetalCatEnemyBase::FireOneShot, ShotInterval, true);
+}
+
+void ADeathMetalCatEnemyBase::FireOneShot()
+{
+	if (CachedPlayerCharacter && ProjectileClass)
+	{
+		const FVector Direction = (CachedPlayerCharacter->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+		const FTransform SpawnTransform(Direction.Rotation(), GetActorLocation());
+
+		FActorSpawnParameters SpawnParams;
+		// The enemy's own capsule likely overlaps the spawn point at this exact location -- always
+		// spawn regardless rather than silently failing.
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		if (AEnemyProjectile* Projectile = GetWorld()->SpawnActor<AEnemyProjectile>(ProjectileClass, SpawnTransform, SpawnParams))
+		{
+			Projectile->InitializeProjectile(Direction, ProjectileSpeed, ProjectileDamage, ProjectileLifetime, GetController(), this);
+		}
+	}
+
+	++ShotsFiredInBurst;
+
+	// Burst length matches the loop flipbook's own frame count (one shot per frame shown) --
+	// falls back to a single shot if this subclass has no loop flipbook configured.
+	const int32 BurstShotCount = (ShootLoopFlipbook && ShootLoopFlipbook->GetNumFrames() > 0) ? ShootLoopFlipbook->GetNumFrames() : 1;
+	if (ShotsFiredInBurst >= BurstShotCount)
+	{
+		GetWorldTimerManager().ClearTimer(ShootBurstTimerHandle);
+		ShootPhase = EEnemyShootPhase::None;
+		LastBurstEndTime = GetWorld()->GetTimeSeconds();
 	}
 }
 
@@ -199,28 +353,48 @@ float ADeathMetalCatEnemyBase::TakeDamage(float DamageAmount, FDamageEvent const
 
 void ADeathMetalCatEnemyBase::HandleDeath()
 {
-	// Hidden + collision disabled rather than destroyed outright -- a testing-convenience
-	// respawn cycle so the same enemy can be repeatedly killed without manually re-placing one in
-	// the level each time. SetActorEnableCollision(false) covers the capsule (sword overlap, gun
-	// hitscan trace) in one call; SetActorHiddenInGame(true) covers rendering for every component.
-	SetActorHiddenInGame(true);
+	// Collision disabled immediately -- a testing-convenience respawn cycle so the same enemy can
+	// be repeatedly killed without manually re-placing one in the level each time. Covers the
+	// capsule (sword overlap, gun hitscan trace) in one call. Visibility is NOT hidden outright
+	// here anymore -- it blinks first via TickDeathBlink, then hides for good once the blink
+	// sequence finishes.
 	SetActorEnableCollision(false);
 
-	// Reset to the same far-negative sentinel LastContactDamageTime starts at, so a respawned
-	// enemy's first contact damages immediately rather than silently inheriting whatever cooldown
-	// window was still in progress from its previous life.
+	// Reset to the same far-negative sentinel LastContactDamageTime/LastBurstEndTime start at, so a
+	// respawned enemy's first contact/burst is immediately available rather than silently
+	// inheriting whatever cooldown window was still in progress from its previous life. Also
+	// unconditionally cancels any in-progress ranged-attack burst -- a mid-burst death would
+	// otherwise leave ShootBurstTimerHandle armed, still calling FireOneShot on a hidden/dead actor.
 	LastContactDamageTime = -1000.f;
+	LastBurstEndTime = -1000.f;
+	GetWorldTimerManager().ClearTimer(ShootDrawTimerHandle);
+	GetWorldTimerManager().ClearTimer(ShootBurstTimerHandle);
+	ShootPhase = EEnemyShootPhase::None;
 
 	// Force the hit-flash color back to resting immediately, and cancel its own pending
-	// clear-timer, rather than leaving a stale flash mid-transition into the hidden/respawn
-	// window -- this is exactly what would otherwise leave the material "stuck mid-flash" on respawn.
+	// clear-timer, rather than leaving a stale flash mid-transition into the death-blink sequence
+	// -- this is exactly what would otherwise leave the material "stuck mid-flash" on respawn.
 	GetWorldTimerManager().ClearTimer(HitFlashTimerHandle);
 	if (DynamicMaterial)
 	{
 		DynamicMaterial->SetVectorParameterValue(TEXT("Color"), BaseColor);
 	}
 
-	GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ADeathMetalCatEnemyBase::HandleRespawn, RespawnDelay, false);
+	RemainingDeathBlinks = DeathBlinkCount;
+	GetWorldTimerManager().SetTimer(DeathBlinkTimerHandle, this, &ADeathMetalCatEnemyBase::TickDeathBlink, DeathBlinkInterval, true);
+}
+
+void ADeathMetalCatEnemyBase::TickDeathBlink()
+{
+	SetActorHiddenInGame(!IsHidden());
+	--RemainingDeathBlinks;
+
+	if (RemainingDeathBlinks <= 0)
+	{
+		GetWorldTimerManager().ClearTimer(DeathBlinkTimerHandle);
+		SetActorHiddenInGame(true);
+		GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ADeathMetalCatEnemyBase::HandleRespawn, RespawnDelay, false);
+	}
 }
 
 void ADeathMetalCatEnemyBase::HandleRespawn()

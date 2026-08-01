@@ -11,7 +11,6 @@
 #include "InputActionValue.h"
 #include "TimerManager.h"
 #include "Components/BoxComponent.h"
-#include "DrawDebugHelpers.h"
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
 #include "Kismet/GameplayStatics.h"
@@ -1138,15 +1137,6 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit nothing (traced full range %f)"), MaxTraceRange);
-	}
-
-	// Visualization only, not gameplay-relevant: an instant hitscan has nothing else to see, so
-	// this shows the actual trace path each shot -- red if it hit something, yellow if it reached
-	// max range with no hit. Cheap and harmless to leave in; remove if it gets visually noisy.
-	DrawDebugLine(GetWorld(), Start, bHit ? Hit.Location : End, bHit ? FColor::Red : FColor::Yellow, false, 1.5f, 0, 2.f);
-	if (bHit)
-	{
-		DrawDebugSphere(GetWorld(), Hit.Location, 10.f, 8, FColor::Red, false, 1.5f);
 	}
 
 	bIsShooting = true;

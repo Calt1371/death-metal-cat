@@ -5,6 +5,7 @@
 #include "OneWayPlatform.generated.h"
 
 class UBoxComponent;
+class UPaperSpriteComponent;
 class ADeathMetalCatCharacter;
 
 /**
@@ -25,8 +26,14 @@ class ADeathMetalCatCharacter;
  * per-actor ignore list) is correct here. If a jumping enemy is ever added, this would need
  * revisiting since it would also fall through while the player is passing through nearby.
  *
- * Pure invisible collision box (no mesh/sprite) -- the visible platform look is separate 2D sprite
- * dressing placed on top by hand, same convention as the project's other placeholder floor cubes.
+ * Collision box, optionally with its own visible sprite dressing (PlatformSprite below) --
+ * BOTH usages are valid and coexist across the level: leave PlatformSprite unset when this
+ * instance is purely adding walkable collision on top of ALREADY-visible art placed separately
+ * (e.g. the ledges on Structure_ROOM1_00_LeftStructure/RightStructure, which get their look from
+ * the structure's own sprite, not this actor), or assign a sprite when this instance IS the
+ * visible platform itself (e.g. SP_Room1_FloatingPlatform) with nothing else drawing it. Nothing
+ * about the existing structure-ledge instances needs to change to adopt this -- an unset
+ * PlatformSprite renders nothing, identical to every instance placed before this was added.
  */
 UCLASS()
 class PYTHONTEST_API AOneWayPlatform : public AActor
@@ -50,6 +57,15 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, Category = "One-Way Platform", AdvancedDisplay)
 	float SurfaceTolerance = 5.f;
+
+	/**
+	 * Optional visual dressing attached to the collision box -- purely cosmetic, plays no part in
+	 * the pass-through Tick logic above (that's keyed entirely to PlatformCollision's own bounds,
+	 * regardless of whether a sprite is assigned here or how big it is). Leave unset for instances
+	 * where separate art elsewhere already provides the visual (see the class comment).
+	 */
+	UPROPERTY(EditAnywhere, Category = "One-Way Platform")
+	TObjectPtr<UPaperSpriteComponent> PlatformSprite;
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "One-Way Platform")

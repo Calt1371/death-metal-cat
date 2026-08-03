@@ -4,6 +4,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "PaperSpriteComponent.h"
 #include "DeathMetalCatCharacter.h"
 
 AOneWayPlatform::AOneWayPlatform()
@@ -22,6 +23,19 @@ AOneWayPlatform::AOneWayPlatform()
 	PlatformCollision->SetCollisionResponseToAllChannels(ECR_Block);
 	PlatformCollision->SetGenerateOverlapEvents(false);
 	PlatformCollision->SetHiddenInGame(true);
+
+	// Purely cosmetic, no sprite assigned by default -- collision stays solely on PlatformCollision
+	// above regardless of whether (or what) sprite an instance sets here, so this never collides on
+	// its own and never factors into the pass-through Tick logic.
+	PlatformSprite = CreateDefaultSubobject<UPaperSpriteComponent>(TEXT("PlatformSprite"));
+	PlatformSprite->SetupAttachment(PlatformCollision);
+	PlatformSprite->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// Absolute scale -- without this, PlatformSprite inherits PlatformCollision's (the root's)
+	// scale, so shrinking an oversized sprite via the actor's Transform also shrinks the collision
+	// box along with it. Location/rotation stay relative (still follows the box's placement); only
+	// scale is decoupled -- resize the sprite via ITS OWN component Transform (select the actor,
+	// expand "Platform Sprite" in the Details/Components panel), not the actor's root Transform.
+	PlatformSprite->SetAbsolute(false, false, true);
 }
 
 void AOneWayPlatform::Tick(float DeltaSeconds)

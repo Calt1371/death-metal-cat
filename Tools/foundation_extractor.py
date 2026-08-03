@@ -305,12 +305,30 @@ art_entries = []
 for a in non_character_non_enemy:
     origin, extent = get_bounds(a)
     loc = a.get_actor_location()
-    art_entries.append({
+    entry = {
         "name": a.get_actor_label(),
         "class": a.get_class().get_name(),
         "position": [loc.x, loc.y, loc.z],
         "offset_from_plane": loc.y,
-    })
+    }
+
+    # scale/color_value are the reference baseline for this asset TYPE (e.g. every future
+    # SP_Room1_FloatingPlatform instance the Room Variation Generator places elsewhere should match
+    # this exactly, not introduce variation) -- visual consistency across generated rooms depends
+    # on these staying fixed, so they're recorded per-instance here rather than assumed constant.
+    # Only meaningful for PaperSprite actors (StaticMeshActor/RoomExitTrigger entries don't get
+    # these fields at all).
+    if isinstance(a, unreal.PaperSpriteActor):
+        actor_scale = a.get_actor_scale3d()
+        entry["scale"] = {"x": actor_scale.x, "y": actor_scale.y, "z": actor_scale.z}
+
+        sprite_comp = a.get_component_by_class(unreal.PaperSpriteComponent)
+        sprite_color = sprite_comp.get_editor_property("sprite_color")
+        # HSV Value = max(R, G, B) by definition -- no conversion library needed, and this avoids
+        # any uncertainty about a Python-exposed HSV helper's own normalization/gamma assumptions.
+        entry["color_value"] = max(sprite_color.r, sprite_color.g, sprite_color.b)
+
+    art_entries.append(entry)
 
 background, midground, foreground = [], [], []
 for entry in art_entries:

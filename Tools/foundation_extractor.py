@@ -32,6 +32,14 @@ exists in C++ source but not yet on the actually-running compiled CDO raises an 
 style exception rather than returning a sane value), and that recompile-state question is out of
 scope for a room-measurement tool.
 
+FLOOR CONVENTIONS (depth_scale_y, depth_offset_from_background, dressing): confirmed directly with
+the room's designer that a floor's world-Y depth scale and its Y-distance from the background art
+are fixed conventions, not incidental placement -- "it always has to be this [value] to keep a
+consistent feel." Also captures which sprites dress each floor (e.g. a top-down tile sitting flush
+on the floor's top surface, paired with a front-facing sprite at positive Y for the 2D side view),
+detected purely by X-span overlap with the floor's bounds -- not by name -- so this generalizes to
+any biome's floor+tile convention, not just this one asset pair.
+
 USAGE:
     python foundation_extractor.py --room Room1 --biome AssassinCity
 """
@@ -302,31 +310,67 @@ for e in enemy_actors:
 
 # ---- Art placement: bucket by world-Y offset from the gameplay plane (Y=0), not by name ----
 art_entries = []
+floor_entries = []  # StaticMeshActor entries -- same dict objects as in art_entries (by reference),
+                     # so fields added to them below also appear in the background/midground/
+                     # foreground buckets built from art_entries.
 for a in non_character_non_enemy:
     origin, extent = get_bounds(a)
     loc = a.get_actor_location()
+    rot = a.get_actor_rotation()
     entry = {
         "name": a.get_actor_label(),
         "class": a.get_class().get_name(),
         "position": [loc.x, loc.y, loc.z],
         "offset_from_plane": loc.y,
+        # Confirmed a real, necessary value, not incidental -- SP_Room1_LongWalkwayTopdown needs a
+        # 90-degree roll to sit correctly on top of a floor (a top-down-view sprite laid flat isn't
+        # just repositioned, it's reoriented). Recorded for every actor, not just known-rotated
+        # ones, since a future biome's convention isn't known in advance.
+        "rotation": {"pitch": rot.pitch, "yaw": rot.yaw, "roll": rot.roll},
     }
+    # Internal-only, stripped before writing -- used for floor_dressing overlap detection below.
+    entry["_left_x"] = origin.x - extent.x
+    entry["_right_x"] = origin.x + extent.x
+    entry["_top_z"] = origin.z + extent.z
 
-    # scale/color_value are the reference baseline for this asset TYPE (e.g. every future
-    # SP_Room1_FloatingPlatform instance the Room Variation Generator places elsewhere should match
-    # this exactly, not introduce variation) -- visual consistency across generated rooms depends
-    # on these staying fixed, so they're recorded per-instance here rather than assumed constant.
-    # Only meaningful for PaperSprite actors (StaticMeshActor/RoomExitTrigger entries don't get
-    # these fields at all).
+    # scale/color_value/color_rgba are the reference baseline for this asset TYPE (e.g. every
+    # future SP_Room1_FloatingPlatform instance the Room Variation Generator places elsewhere
+    # should match this exactly, not introduce variation) -- visual consistency across generated
+    # rooms depends on these staying fixed, so they're recorded per-instance here rather than
+    # assumed constant. Only meaningful for PaperSprite actors (StaticMeshActor/RoomExitTrigger
+    # entries don't get these fields at all).
     if isinstance(a, unreal.PaperSpriteActor):
         actor_scale = a.get_actor_scale3d()
         entry["scale"] = {"x": actor_scale.x, "y": actor_scale.y, "z": actor_scale.z}
 
         sprite_comp = a.get_component_by_class(unreal.PaperSpriteComponent)
         sprite_color = sprite_comp.get_editor_property("sprite_color")
+        # Full RGBA -- confirmed necessary, not redundant with color_value: some sprites (e.g.
+        # Background_MidgroundCity, r=0.021/g=0.006/b=0.006) are NOT neutral gray, so reusing just
+        # the V channel with R=G=B loses real tint information and produces a visibly wrong color
+        # when a future room reuses this asset type. color_value is kept alongside it (not
+        # replaced) since it's still a convenient single-number brightness summary.
+        entry["color_rgba"] = {"r": sprite_color.r, "g": sprite_color.g, "b": sprite_color.b, "a": sprite_color.a}
         # HSV Value = max(R, G, B) by definition -- no conversion library needed, and this avoids
         # any uncertainty about a Python-exposed HSV helper's own normalization/gamma assumptions.
         entry["color_value"] = max(sprite_color.r, sprite_color.g, sprite_color.b)
+
+    # depth_scale_y is a fixed CONVENTION, not incidental -- confirmed directly with the room's
+    # designer that a floor's Y-scale (world-depth thickness) always has to be this same value to
+    # keep a consistent feel, so future room generation should reuse it exactly rather than
+    # treating floor depth as a free parameter.
+    # width_x on every entry (floor AND every sprite, not just dressing) -- confirmed a floor and
+    # its paired top-down/front-dressing sprites are meant to always be the SAME length as each
+    # other. Room1's own current measurements aren't a perfect match (FlatRun2/LongWalkway/
+    # LongWalkwayTopdown differ by up to ~9%), so this is recorded as real measured data for the
+    # Room Variation Generator to compare/enforce going forward, not asserted as already-exact here
+    # -- this tool measures, it doesn't correct Room1's own placement.
+    entry["width_x"] = extent.x * 2
+
+    if isinstance(a, unreal.StaticMeshActor):
+        actor_scale = a.get_actor_scale3d()
+        entry["depth_scale_y"] = actor_scale.y
+        floor_entries.append(entry)
 
     art_entries.append(entry)
 
@@ -339,6 +383,97 @@ for entry in art_entries:
         foreground.append(entry)
     else:
         midground.append(entry)
+
+# ---- Floor-to-background depth offset: also a fixed convention, not incidental -- confirmed
+# directly with the room's designer that a floor always has to sit this far (in world-Y depth) from
+# the background art "to keep a consistent feel". Measured as the Y-distance from each floor to the
+# NEAREST background-layer actor, so future rooms reuse the same separation instead of an arbitrary
+# one. ----
+for floor in floor_entries:
+    if background:
+        floor["depth_offset_from_background"] = min(
+            abs(floor["offset_from_plane"] - bg["offset_from_plane"]) for bg in background
+        )
+    else:
+        floor["depth_offset_from_background"] = None
+
+# ---- Floor dressing: sprites whose X-footprint overlaps a floor's AND whose position sits close
+# to the floor's top surface (Z-proximity) -- e.g. a top-down tile sprite sitting flush on the
+# floor's top (Z within FLOOR_DRESSING_Z_TOLERANCE), paired with a second sprite placed in front of
+# it (positive Y, foreground) for the 2D side-scrolling view. The Z-proximity check is required, not
+# just X-overlap: wide background/foreground art (skyline, structures, cables) also happens to span
+# a floor's entire X-range purely because of its own large scale, sitting hundreds to thousands of
+# units above/below the floor -- that's incidental overlap, not "dressing the floor", and got
+# wrongly included before this check was added. Detected purely by geometry, not by name, so this
+# generalizes to any biome's floor+tile convention, not just this one specific asset pair. ----
+FLOOR_DRESSING_Z_TOLERANCE = 100.0
+
+def x_overlaps(a_left, a_right, b_left, b_right):
+    return a_left < b_right and b_left < a_right
+
+for floor in floor_entries:
+    dressing = []
+    for entry in art_entries:
+        if entry is floor or entry["class"] != "PaperSpriteActor":
+            continue
+        if abs(entry["position"][2] - floor["_top_z"]) > FLOOR_DRESSING_Z_TOLERANCE:
+            continue  # sits nowhere near the floor's surface -- incidental X-overlap only
+        if x_overlaps(floor["_left_x"], floor["_right_x"], entry["_left_x"], entry["_right_x"]):
+            if entry["offset_from_plane"] > gameplay_plane_y_band:
+                layer = "foreground"
+            elif entry["offset_from_plane"] < -gameplay_plane_y_band:
+                layer = "background"
+            else:
+                layer = "midground"
+            dressing.append({
+                "name": entry["name"],
+                "layer": layer,
+                "y_offset_from_plane": entry["offset_from_plane"],
+                "z_offset_from_floor_top": entry["position"][2] - floor["_top_z"],
+                # Confirmed necessary: a top-down tile sprite needs a real rotation (e.g. 90-degree
+                # roll) to lay flat on the floor -- position/scale alone don't reproduce the look.
+                "rotation": entry["rotation"],
+                # Confirmed a floor and its dressing sprites are meant to always share the same
+                # length -- compare directly against floor["width_x"] (both measured the same way,
+                # actor bounds X-extent * 2).
+                "width_x": entry["width_x"],
+            })
+    floor["dressing"] = dressing
+
+# ---- Nearby props: a SEPARATE, broader category from "dressing" above -- sprites whose X-span
+# overlaps a floor but do NOT sit flush on its surface (outside FLOOR_DRESSING_Z_TOLERANCE), split
+# into two genuinely different real patterns confirmed in Room1: scattered ground-level clutter at
+# moderate height (e.g. SP_Room1_CityRubbleDebris, ~36-116uu above the floor, foreground-band Y) and
+# wide overhead atmosphere props spanning the whole floor system (e.g. ForeGroundCable, ~1377uu
+# above, also foreground-band Y). Deep background art (Y < -gameplay_plane_y_band, e.g. skyline/
+# structures) is deliberately excluded here too -- it's real background dressing for the ROOM, not
+# for this specific floor, even though it also happens to X-overlap. This does NOT attempt one
+# single Z-threshold rule to classify everything (moderate vs. overhead here is descriptive, not a
+# hard cutoff) -- the Room Variation Generator has the full z_offset_from_floor_top to interpret. ----
+for floor in floor_entries:
+    dressed_names = {d["name"] for d in floor["dressing"]}
+    nearby_props = []
+    for entry in art_entries:
+        if entry is floor or entry["class"] != "PaperSpriteActor" or entry["name"] in dressed_names:
+            continue
+        if entry["offset_from_plane"] < -gameplay_plane_y_band:
+            continue  # deep background art -- not a floor-specific prop, even if X-overlapping
+        if x_overlaps(floor["_left_x"], floor["_right_x"], entry["_left_x"], entry["_right_x"]):
+            nearby_props.append({
+                "name": entry["name"],
+                "y_offset_from_plane": entry["offset_from_plane"],
+                "z_offset_from_floor_top": entry["position"][2] - floor["_top_z"],
+                "rotation": entry["rotation"],
+                "scale": entry.get("scale"),
+                "color_rgba": entry.get("color_rgba"),
+            })
+    floor["nearby_props"] = nearby_props
+
+# ---- Strip internal-only bounds fields (used only for the overlap detection above) ----
+for entry in art_entries:
+    entry.pop("_left_x", None)
+    entry.pop("_right_x", None)
+    entry.pop("_top_z", None)
 
 def depth_range(bucket):
     if not bucket:

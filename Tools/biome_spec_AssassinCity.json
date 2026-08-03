@@ -19,6 +19,23 @@
     "gaps": [
       {
         "from": [
+          -2063.0,
+          494.0001
+        ],
+        "to": [
+          -2064.5,
+          494.0001
+        ],
+        "distance": 1.5,
+        "reachable_by": [
+          "jump",
+          "wall_jump",
+          "dodge"
+        ],
+        "tolerance": "comfortable"
+      },
+      {
+        "from": [
           771.5000118128955,
           900.0
         ],
@@ -76,23 +93,6 @@
         "distance": 127.67999267578125,
         "reachable_by": [
           "jump"
-        ],
-        "tolerance": "comfortable"
-      },
-      {
-        "from": [
-          -2064.5,
-          494.0001
-        ],
-        "to": [
-          -2063.0,
-          494.0001
-        ],
-        "distance": 1.5,
-        "reachable_by": [
-          "jump",
-          "wall_jump",
-          "dodge"
         ],
         "tolerance": "comfortable"
       },
@@ -208,22 +208,6 @@
   "art_placement": {
     "background": [
       {
-        "name": "Background_Skyline",
-        "class": "PaperSpriteActor",
-        "position": [
-          -502.5,
-          -860.0,
-          1180.0000000000025
-        ],
-        "offset_from_plane": -860.0,
-        "scale": {
-          "x": 1.3330078125,
-          "y": 1.0,
-          "z": 1.3330078125
-        },
-        "color_value": 1.0
-      },
-      {
         "name": "Background_MidgroundCity",
         "class": "PaperSpriteActor",
         "position": [
@@ -232,15 +216,375 @@
           661.5896660343274
         ],
         "offset_from_plane": -855.0000621936942,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
         "scale": {
           "x": 4.349999902769923,
           "y": 2.0775,
           "z": 3.919999912381172
         },
-        "color_value": 0.020999999716877937
+        "color_rgba": {
+          "r": 0.020999999716877937,
+          "g": 0.0056870002299547195,
+          "b": 0.006364000029861927,
+          "a": 1.0
+        },
+        "color_value": 0.020999999716877937,
+        "width_x": 6681.599850654602
       }
     ],
     "midground": [
+      {
+        "name": "SP_Room1_CityRubbleDebris9",
+        "class": "PaperSpriteActor",
+        "position": [
+          1680.0,
+          -40.0,
+          360.0
+        ],
+        "offset_from_plane": -40.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_LongWalkwayTopdown",
+        "class": "PaperSpriteActor",
+        "position": [
+          -2720.0,
+          1.0516032489249483e-12,
+          500.0
+        ],
+        "offset_from_plane": 1.0516032489249483e-12,
+        "rotation": {
+          "pitch": -0.0,
+          "yaw": 0.0,
+          "roll": 89.99999999999987
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 0.8524999809451401
+        },
+        "color_rgba": {
+          "r": 0.010417000390589237,
+          "g": 0.010417000390589237,
+          "b": 0.010417000390589237,
+          "a": 1.0
+        },
+        "color_value": 0.010417000390589237,
+        "width_x": 1496.0
+      },
+      {
+        "name": "Floor_ROOM1_00_FlatRun",
+        "class": "StaticMeshActor",
+        "position": [
+          315.5,
+          0.0,
+          484.0001
+        ],
+        "offset_from_plane": 0.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 4757.0,
+        "depth_scale_y": 3.0,
+        "depth_offset_from_background": 855.0000621936942,
+        "dressing": [
+          {
+            "name": "SP_Room1_CityRubbleDebris10",
+            "layer": "foreground",
+            "y_offset_from_plane": 210.0,
+            "z_offset_from_floor_top": -64.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1316.0
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris6",
+            "layer": "foreground",
+            "y_offset_from_plane": 160.0,
+            "z_offset_from_floor_top": -74.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1316.0
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris2",
+            "layer": "foreground",
+            "y_offset_from_plane": 200.0,
+            "z_offset_from_floor_top": -94.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1316.0
+          },
+          {
+            "name": "SP_Room1_LongWalkway",
+            "layer": "foreground",
+            "y_offset_from_plane": 160.0,
+            "z_offset_from_floor_top": 5.999900000000025,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1526.0
+          },
+          {
+            "name": "SP_Room1_LongWalkwayTopdown",
+            "layer": "midground",
+            "y_offset_from_plane": 1.0516032489249483e-12,
+            "z_offset_from_floor_top": 5.999900000000025,
+            "rotation": {
+              "pitch": -0.0,
+              "yaw": 0.0,
+              "roll": 89.99999999999987
+            },
+            "width_x": 1496.0
+          }
+        ],
+        "nearby_props": [
+          {
+            "name": "SP_Room1_CityRubbleDebris9",
+            "y_offset_from_plane": -40.0,
+            "z_offset_from_floor_top": -134.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris8",
+            "y_offset_from_plane": 180.0,
+            "z_offset_from_floor_top": -134.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris7",
+            "y_offset_from_plane": 210.0,
+            "z_offset_from_floor_top": -134.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris5",
+            "y_offset_from_plane": 190.0,
+            "z_offset_from_floor_top": -134.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris4",
+            "y_offset_from_plane": 180.0,
+            "z_offset_from_floor_top": -134.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris3",
+            "y_offset_from_plane": 140.0,
+            "z_offset_from_floor_top": -134.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris",
+            "y_offset_from_plane": 170.0,
+            "z_offset_from_floor_top": -144.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.017000000923871994,
+              "g": 0.017000000923871994,
+              "b": 0.017000000923871994,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "ForeGroundCable",
+            "y_offset_from_plane": 214.99993800000004,
+            "z_offset_from_floor_top": 1377.5895659999999,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 3.2,
+              "y": 2.0,
+              "z": 3.5
+            },
+            "color_rgba": {
+              "r": 0.004776999820023775,
+              "g": 0.004776999820023775,
+              "b": 0.004776999820023775,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "Structure_ROOM1_08_RightStructure",
+            "y_offset_from_plane": -70.0,
+            "z_offset_from_floor_top": 555.1180038452148,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.03645800054073334,
+              "g": 0.03645800054073334,
+              "b": 0.03645800054073334,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "Structure_ROOM1_00_LeftStructure",
+            "y_offset_from_plane": -50.0,
+            "z_offset_from_floor_top": 446.36910247802734,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.026041999459266663,
+              "g": 0.026041999459266663,
+              "b": 0.026041999459266663,
+              "a": 1.0
+            }
+          }
+        ]
+      },
       {
         "name": "Structure_ROOM1_08_RightStructure",
         "class": "PaperSpriteActor",
@@ -250,12 +594,24 @@
           1049.1181038452148
         ],
         "offset_from_plane": -70.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
         "scale": {
           "x": 1.0,
           "y": 1.0,
           "z": 1.0
         },
-        "color_value": 0.03645800054073334
+        "color_rgba": {
+          "r": 0.03645800054073334,
+          "g": 0.03645800054073334,
+          "b": 0.03645800054073334,
+          "a": 1.0
+        },
+        "color_value": 0.03645800054073334,
+        "width_x": 1245.0
       },
       {
         "name": "OneWayPlatform13",
@@ -265,7 +621,13 @@
           30.0,
           880.0
         ],
-        "offset_from_plane": 30.0
+        "offset_from_plane": 30.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 1056.999976374209
       },
       {
         "name": "OneWayPlatform12",
@@ -275,7 +637,13 @@
           30.0,
           1490.0
         ],
-        "offset_from_plane": 30.0
+        "offset_from_plane": 30.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 507.99998864531517
       },
       {
         "name": "ExitTrigger_ROOM1_to_ROOM2",
@@ -285,7 +653,13 @@
           0.0,
           622.0001
         ],
-        "offset_from_plane": 0.0
+        "offset_from_plane": 0.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 100.0
       },
       {
         "name": "OneWayPlatform14",
@@ -295,7 +669,13 @@
           50.0,
           1154.000155
         ],
-        "offset_from_plane": 50.0
+        "offset_from_plane": 50.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 342.32000732421875
       },
       {
         "name": "OneWayPlatform11",
@@ -305,7 +685,13 @@
           30.0,
           1300.0
         ],
-        "offset_from_plane": 30.0
+        "offset_from_plane": 30.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 342.32000732421875
       },
       {
         "name": "Structure_ROOM1_00_LeftStructure",
@@ -316,12 +702,24 @@
           940.3692024780273
         ],
         "offset_from_plane": -50.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
         "scale": {
           "x": 1.0,
           "y": 1.0,
           "z": 1.0
         },
-        "color_value": 0.026041999459266663
+        "color_rgba": {
+          "r": 0.026041999459266663,
+          "g": 0.026041999459266663,
+          "b": 0.026041999459266663,
+          "a": 1.0
+        },
+        "color_value": 0.026041999459266663,
+        "width_x": 1431.0
       },
       {
         "name": "Floor_ROOM1_00_FlatRun2",
@@ -331,7 +729,109 @@
           0.0,
           484.0001
         ],
-        "offset_from_plane": 0.0
+        "offset_from_plane": 0.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 1400.0,
+        "depth_scale_y": 3.0,
+        "depth_offset_from_background": 855.0000621936942,
+        "dressing": [
+          {
+            "name": "SP_Room1_CityRubbleDebris10",
+            "layer": "foreground",
+            "y_offset_from_plane": 210.0,
+            "z_offset_from_floor_top": -64.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1316.0
+          },
+          {
+            "name": "SP_Room1_CityRubbleDebris2",
+            "layer": "foreground",
+            "y_offset_from_plane": 200.0,
+            "z_offset_from_floor_top": -94.00009999999997,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1316.0
+          },
+          {
+            "name": "SP_Room1_LongWalkway",
+            "layer": "foreground",
+            "y_offset_from_plane": 160.0,
+            "z_offset_from_floor_top": 5.999900000000025,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "width_x": 1526.0
+          },
+          {
+            "name": "SP_Room1_LongWalkwayTopdown",
+            "layer": "midground",
+            "y_offset_from_plane": 1.0516032489249483e-12,
+            "z_offset_from_floor_top": 5.999900000000025,
+            "rotation": {
+              "pitch": -0.0,
+              "yaw": 0.0,
+              "roll": 89.99999999999987
+            },
+            "width_x": 1496.0
+          }
+        ],
+        "nearby_props": [
+          {
+            "name": "ForeGroundCable",
+            "y_offset_from_plane": 214.99993800000004,
+            "z_offset_from_floor_top": 1377.5895659999999,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 3.2,
+              "y": 2.0,
+              "z": 3.5
+            },
+            "color_rgba": {
+              "r": 0.004776999820023775,
+              "g": 0.004776999820023775,
+              "b": 0.004776999820023775,
+              "a": 1.0
+            }
+          },
+          {
+            "name": "Structure_ROOM1_00_LeftStructure",
+            "y_offset_from_plane": -50.0,
+            "z_offset_from_floor_top": 446.36910247802734,
+            "rotation": {
+              "pitch": 0.0,
+              "yaw": 0.0,
+              "roll": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0,
+              "z": 1.0
+            },
+            "color_rgba": {
+              "r": 0.026041999459266663,
+              "g": 0.026041999459266663,
+              "b": 0.026041999459266663,
+              "a": 1.0
+            }
+          }
+        ]
       },
       {
         "name": "OneWayPlatform2",
@@ -341,7 +841,13 @@
           70.0,
           790.0
         ],
-        "offset_from_plane": 70.0
+        "offset_from_plane": 70.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 210.99999528378248
       },
       {
         "name": "OneWayPlatform4",
@@ -351,7 +857,13 @@
           70.0,
           980.0
         ],
-        "offset_from_plane": 70.0
+        "offset_from_plane": 70.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 211.0
       },
       {
         "name": "OneWayPlatform6",
@@ -361,7 +873,13 @@
           70.0,
           1360.0
         ],
-        "offset_from_plane": 70.0
+        "offset_from_plane": 70.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 343.9999923110008
       },
       {
         "name": "OneWayPlatform8",
@@ -371,17 +889,13 @@
           70.0,
           760.0
         ],
-        "offset_from_plane": 70.0
-      },
-      {
-        "name": "Floor_ROOM1_00_FlatRun",
-        "class": "StaticMeshActor",
-        "position": [
-          315.5,
-          0.0,
-          484.0001
-        ],
-        "offset_from_plane": 0.0
+        "offset_from_plane": 70.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 342.32000732421875
       },
       {
         "name": "OneWayPlatform10",
@@ -391,7 +905,13 @@
           30.0,
           1060.0
         ],
-        "offset_from_plane": 30.0
+        "offset_from_plane": 30.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 342.32000732421875
       },
       {
         "name": "OneWayPlatform15",
@@ -401,7 +921,13 @@
           30.0,
           1530.0
         ],
-        "offset_from_plane": 30.0
+        "offset_from_plane": 30.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 342.32000732421875
       },
       {
         "name": "OneWayPlatform7",
@@ -411,7 +937,13 @@
           30.0,
           880.0
         ],
-        "offset_from_plane": 30.0
+        "offset_from_plane": 30.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 342.32000732421875
       },
       {
         "name": "OneWayPlatform3",
@@ -421,7 +953,13 @@
           80.0,
           870.0
         ],
-        "offset_from_plane": 80.0
+        "offset_from_plane": 80.0,
+        "rotation": {
+          "pitch": 7.84067264101324e-47,
+          "yaw": 180.0,
+          "roll": 180.0
+        },
+        "width_x": 777.999982610344
       },
       {
         "name": "OneWayPlatform5",
@@ -431,10 +969,296 @@
           70.0,
           1140.0
         ],
-        "offset_from_plane": 70.0
+        "offset_from_plane": 70.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "width_x": 572.999987192452
       }
     ],
     "foreground": [
+      {
+        "name": "SP_Room1_CityRubbleDebris10",
+        "class": "PaperSpriteActor",
+        "position": [
+          -2390.0,
+          210.0,
+          430.0
+        ],
+        "offset_from_plane": 210.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris8",
+        "class": "PaperSpriteActor",
+        "position": [
+          1990.0,
+          180.0,
+          360.0
+        ],
+        "offset_from_plane": 180.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris7",
+        "class": "PaperSpriteActor",
+        "position": [
+          1460.0,
+          210.0,
+          360.0
+        ],
+        "offset_from_plane": 210.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris6",
+        "class": "PaperSpriteActor",
+        "position": [
+          890.0,
+          160.0,
+          420.0
+        ],
+        "offset_from_plane": 160.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris5",
+        "class": "PaperSpriteActor",
+        "position": [
+          530.0,
+          190.0,
+          360.0
+        ],
+        "offset_from_plane": 190.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris4",
+        "class": "PaperSpriteActor",
+        "position": [
+          80.0,
+          180.0,
+          360.0
+        ],
+        "offset_from_plane": 180.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris3",
+        "class": "PaperSpriteActor",
+        "position": [
+          -470.0,
+          140.0,
+          360.0
+        ],
+        "offset_from_plane": 140.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris2",
+        "class": "PaperSpriteActor",
+        "position": [
+          -1560.0,
+          200.0,
+          400.0
+        ],
+        "offset_from_plane": 200.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_CityRubbleDebris",
+        "class": "PaperSpriteActor",
+        "position": [
+          -1060.0,
+          170.0,
+          350.0
+        ],
+        "offset_from_plane": 170.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.017000000923871994,
+          "g": 0.017000000923871994,
+          "b": 0.017000000923871994,
+          "a": 1.0
+        },
+        "color_value": 0.017000000923871994,
+        "width_x": 1316.0
+      },
+      {
+        "name": "SP_Room1_LongWalkway",
+        "class": "PaperSpriteActor",
+        "position": [
+          -1310.0,
+          160.0,
+          500.0
+        ],
+        "offset_from_plane": 160.0,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
+        "scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        },
+        "color_rgba": {
+          "r": 0.035999998450279236,
+          "g": 0.035999998450279236,
+          "b": 0.035999998450279236,
+          "a": 1.0
+        },
+        "color_value": 0.035999998450279236,
+        "width_x": 1526.0
+      },
       {
         "name": "ForeGroundCable",
         "class": "PaperSpriteActor",
@@ -444,17 +1268,29 @@
           1871.5896659999999
         ],
         "offset_from_plane": 214.99993800000004,
+        "rotation": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        },
         "scale": {
           "x": 3.2,
           "y": 2.0,
           "z": 3.5
         },
-        "color_value": 0.004776999820023775
+        "color_rgba": {
+          "r": 0.004776999820023775,
+          "g": 0.004776999820023775,
+          "b": 0.004776999820023775,
+          "a": 1.0
+        },
+        "color_value": 0.004776999820023775,
+        "width_x": 4915.200000000001
       }
     ],
     "layer_depth_ranges": {
       "background": [
-        -860.0,
+        -855.0000621936942,
         -855.0000621936942
       ],
       "midground": [
@@ -462,7 +1298,7 @@
         80.0
       ],
       "foreground": [
-        214.99993800000004,
+        140.0,
         214.99993800000004
       ]
     }

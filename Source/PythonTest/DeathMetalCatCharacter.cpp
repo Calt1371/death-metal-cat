@@ -20,6 +20,7 @@
 #include "Blueprint/UserWidget.h"
 #include "QuipLibrary.h"
 #include "RoomProgressionManager.h"
+#include "DeathMetalCatEnemyBase.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -882,6 +883,16 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 		return;
 	}
 
+	// Restrict melee damage to actual enemies -- without this, the hitbox (OverlapAllDynamic)
+	// happily overlaps anything with collision enabled, including solid background geometry like
+	// Structure_ROOM1_00_LeftStructure/RightStructure. AActor's default TakeDamage() just echoes
+	// the damage amount back with no health system, so those would otherwise still show a floating
+	// damage number and register a Gnarly hit on every swing that merely swept through them.
+	if (!OtherActor->IsA<ADeathMetalCatEnemyBase>())
+	{
+		return;
+	}
+
 	EDamageTier Tier;
 	float RolledDamage = RollDamage(SwordBaseDamage, Tier);
 
@@ -1110,7 +1121,13 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Start, End, FQuat::Identity, ECC_Visibility,
 		FCollisionShape::MakeSphere(GunTraceRadius), QueryParams);
 
-	if (bHit && Hit.GetActor())
+	// Restrict gun damage to actual enemies -- same missing-filter bug as OnSwordHitboxBeginOverlap
+	// had: ECC_Visibility is blocked by solid background geometry (Structure_ROOM1_00_LeftStructure/
+	// RightStructure), and AActor's default TakeDamage() echoes the damage amount back with no
+	// health system, so those would otherwise still show a floating damage number on every shot
+	// that swept into them (most visible on the airborne down-shot, which aims into the ground/
+	// structures rather than level).
+	if (bHit && Hit.GetActor() && Hit.GetActor()->IsA<ADeathMetalCatEnemyBase>())
 	{
 		EDamageTier Tier;
 		// No GnarlyRank multiplier here -- deliberately melee-only per the GDD (see OnSwordHitboxBeginOverlap).
@@ -1133,6 +1150,10 @@ void ADeathMetalCatCharacter::FireShotTrace()
 			// bonus itself is sword-exclusive, not rank progression.
 			RegisterGnarlyHit();
 		}
+	}
+	else if (bHit && Hit.GetActor())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit non-enemy actor: %s -- no damage applied"), *Hit.GetActor()->GetName());
 	}
 	else
 	{

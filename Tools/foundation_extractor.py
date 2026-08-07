@@ -53,7 +53,11 @@ import sys
 import tempfile
 import time
 
-import docx
+# NOTE: python-docx is imported lazily inside read_gdd(), not here at module level -- this module
+# must stay importable from environments that don't have it installed: UE5's embedded Python
+# (which the extraction template below imports this module INTO, to reuse compute_gaps() rather
+# than duplicating it) and Tools/reachability_verifier.py's own environment both only ever need
+# compute_gaps()/the movement-constants helpers, never read_gdd() itself.
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(TOOLS_DIR, "..", "AgentScripts"))
@@ -110,6 +114,132 @@ GAMEPLAY_PLANE_Y_BAND = 100.0
 # traversal method's max range clears it -- i.e. a jump that only just makes a gap, not one with
 # comfortable room to spare.
 TIGHT_TOLERANCE_FRACTION = 0.85
+
+# Nearest-K-neighbor graph: each platform connects to its N closest OTHER platforms by straight-
+# line (X, Z) distance -- an approximation of the room's normal traversal connections, not full
+# pathfinding. Exactly this (K=2) and the original distance-only tolerance margin, after a broader
+# "all pairs within a generous radius" version was tried and rejected: it surfaced
+# OneWayPlatform11->OneWayPlatform15 (a real, deliberately hard reference jump -- see
+# REFERENCE_GAP_LABEL_PAIRS below) but ALSO changed/added a large number of other gaps that were
+# never meant to be a direct connection, which the room's designer explicitly did not want -- only
+# the one confirmed reference jump should be added, nothing else should move.
+NUM_NEAREST_NEIGHBORS = 2
+
+# Confirmed directly with the room's designer: this is ONE deliberately hard, low-margin jump,
+# included on purpose as a calibration reference for "how tight can a gap be and still be
+# reachable" -- NOT the nearest-neighbor pairing for either platform (by construction: a
+# deliberately risky long jump is never anyone's closest neighbor), so the nearest-K-neighbor graph
+# above would otherwise silently drop it. Explicitly named rather than inferred, and additive only
+# -- it must not change any other gap's membership or values.
+REFERENCE_GAP_LABEL_PAIRS = [("OneWayPlatform11", "OneWayPlatform15")]
+
+
+def compute_gaps(
+    platform_data,
+    max_jump_distance,
+    max_jump_height,
+    wall_jump_max_distance,
+    wall_jump_max_height,
+    dodge_distance,
+    num_nearest_neighbors=NUM_NEAREST_NEIGHBORS,
+    reference_gap_label_pairs=None,
+    tight_tolerance_fraction=TIGHT_TOLERANCE_FRACTION,
+):
+    """The gap-computation + reachability-classification math -- extracted here as a plain,
+    importable function (no `unreal` import, no other dependency) so it has exactly ONE
+    implementation shared by both Foundation Extractor's own golden-room measurement (via the
+    embedded UE template below, which imports this module and calls this function) and
+    Tools/reachability_verifier.py (which re-runs this SAME check against a generated room's
+    platform list). Neither is allowed to reimplement this math a second time.
+
+    platform_data: list of {"label", "left_x", "right_x", "top_z"} dicts -- exactly what the
+    embedded template builds from live actor bounds, and exactly what a caller working from a
+    generated room's actor list needs to build the same way.
+
+    Returns the same gap list shape Foundation Extractor has always written into
+    biome_spec_<Biome>.json's gameplay_spacing.gaps, plus two additive fields (from_label/to_label)
+    that were implicit before (only recoverable by matching coordinates back to actors) -- added
+    because Reachability Verifier's whole job is reporting PER-GAP pass/fail, which needs a stable
+    way to name which gap failed. Nothing in this project reads the gaps field yet (confirmed by
+    search), so this is a safe, non-breaking addition, not a schema change against any real
+    consumer.
+    """
+    if reference_gap_label_pairs is None:
+        reference_gap_label_pairs = REFERENCE_GAP_LABEL_PAIRS
+
+    def edge_gap(a, b):
+        if a["right_x"] <= b["left_x"]:
+            x_gap = b["left_x"] - a["right_x"]
+        elif b["right_x"] <= a["left_x"]:
+            x_gap = a["left_x"] - b["right_x"]
+        else:
+            x_gap = 0.0  # footprints overlap in X -- directly above/below, not a horizontal gap
+        height_up = b["top_z"] - a["top_z"]
+        straight_dist = (x_gap ** 2 + height_up ** 2) ** 0.5
+        return x_gap, height_up, straight_dist
+
+    edges = {}  # frozenset({i, j}) -> (x_gap, height_up, i, j) -- keeps the smallest x_gap seen per pair
+    for i, p in enumerate(platform_data):
+        neighbor_dists = []
+        for j, q in enumerate(platform_data):
+            if i == j:
+                continue
+            x_gap, height_up, straight_dist = edge_gap(p, q)
+            neighbor_dists.append((straight_dist, j, x_gap, height_up))
+        neighbor_dists.sort(key=lambda t: t[0])
+        for straight_dist, j, x_gap, height_up in neighbor_dists[:num_nearest_neighbors]:
+            key = frozenset((i, j))
+            if key not in edges or x_gap < edges[key][0]:
+                edges[key] = (x_gap, height_up, i, j)
+
+    label_to_index = {p["label"]: idx for idx, p in enumerate(platform_data)}
+    for label_a, label_b in reference_gap_label_pairs:
+        if label_a not in label_to_index or label_b not in label_to_index:
+            continue  # platform not present in this room/run -- skip rather than error
+        i, j = label_to_index[label_a], label_to_index[label_b]
+        x_gap, height_up, _ = edge_gap(platform_data[i], platform_data[j])
+        edges[frozenset((i, j))] = (x_gap, height_up, i, j)
+
+    gaps = []
+    for x_gap, height_up, i, j in edges.values():
+        if x_gap <= 0:
+            continue  # vertically stacked / overlapping footprints -- not a horizontal traversal gap
+        p, q = platform_data[i], platform_data[j]
+        # Orient from -> to as lower -> higher so height_up is always the climb (never negative).
+        if height_up < 0:
+            src, dst, height_up = q, p, -height_up
+        else:
+            src, dst = p, q
+
+        reachable_by = []
+        tightest_margin = None
+        for method_name, max_dist, max_height in [
+            ("jump", max_jump_distance, max_jump_height),
+            ("wall_jump", wall_jump_max_distance, wall_jump_max_height),
+            ("dodge", dodge_distance, 0.0),
+        ]:
+            height_ok = height_up <= max_height if height_up > 0 else True
+            if x_gap <= max_dist and height_ok:
+                reachable_by.append(method_name)
+                margin_fraction = x_gap / max_dist if max_dist > 0 else 1.0
+                if tightest_margin is None or margin_fraction < tightest_margin:
+                    tightest_margin = margin_fraction
+
+        tolerance = "tight" if (tightest_margin is not None and tightest_margin >= tight_tolerance_fraction) else "comfortable"
+        if not reachable_by:
+            tolerance = "tight"  # unreachable by any measured method -- flag as tight, not silently comfortable
+
+        gaps.append({
+            "from_label": src["label"],
+            "to_label": dst["label"],
+            "from": [src["right_x"] if src["right_x"] <= dst["left_x"] else src["left_x"], src["top_z"]],
+            "to": [dst["left_x"] if src["right_x"] <= dst["left_x"] else dst["right_x"], dst["top_z"]],
+            "distance": x_gap,
+            "reachable_by": reachable_by,
+            "tolerance": tolerance,
+        })
+
+    return gaps
 
 
 # ============================================================================================
@@ -194,6 +324,8 @@ def read_gdd(gdd_path: str, room_types_header_path: str) -> dict:
       agent performs is cpp_documented_defaults vs live_cdo_values (see compare_constants), since
       the GDD's own text (Section 4.3) points to "documented C++ defaults" as the actual baseline.
     """
+    import docx  # lazy -- see the note at the top of this module
+
     d = docx.Document(gdd_path)
 
     agent_roster = []
@@ -448,105 +580,32 @@ def get_bounds(actor):
     origin, extent = actor.get_actor_bounds(False)
     return origin, extent
 
-# ---- Gap computation: gameplay plane = world (X, Z); world Y is depth, handled separately ----
-# Nearest-K-neighbor graph: each platform connects to its N closest OTHER platforms by straight-
-# line (X, Z) distance -- an approximation of the room's normal traversal connections, not full
-# pathfinding. Reverted here to exactly this (K=2) and to the original distance-only tolerance
-# margin after a broader "all pairs within a generous radius" version was tried and rejected: it
-# surfaced OneWayPlatform11->OneWayPlatform15 (a real, deliberately hard reference jump -- see
-# REFERENCE_GAP_LABEL_PAIRS below) but ALSO changed/added a large number of other gaps that were
-# never meant to be a direct connection, which the room's designer explicitly did not want -- only
-# the one confirmed reference jump should be added, nothing else should move.
-NUM_NEAREST_NEIGHBORS = 2
-
-# Confirmed directly with the room's designer: this is ONE deliberately hard, low-margin jump,
-# included on purpose as a calibration reference for "how tight can a gap be and still be
-# reachable" -- NOT the nearest-neighbor pairing for either platform (by construction: a
-# deliberately risky long jump is never anyone's closest neighbor), so the nearest-K-neighbor graph
-# above would otherwise silently drop it. Explicitly named rather than inferred, and additive only
-# -- it must not change any other gap's membership or values.
-REFERENCE_GAP_LABEL_PAIRS = [("OneWayPlatform11", "OneWayPlatform15")]
+# ---- Gap computation: gameplay plane = world (X, Z); world Y is depth, handled separately.
+# The actual gap-computation/reachability math lives in ONE place, Tools/foundation_extractor.py's
+# own compute_gaps() -- imported here rather than duplicated, so Reachability Verifier (which
+# calls the exact same function against a generated room's platform list) can never drift out of
+# sync with what Foundation Extractor itself uses to measure the golden room. ----
+import sys as _sys
+_sys.path.insert(0, r"__TOOLS_DIR__")
+import foundation_extractor as _fe
 
 platform_data = []
 for a in platform_actors:
     origin, extent = get_bounds(a)
     platform_data.append({
-        "actor": a,
         "label": a.get_actor_label(),
         "left_x": origin.x - extent.x,
         "right_x": origin.x + extent.x,
         "top_z": origin.z + extent.z,
     })
 
-def edge_gap(a, b):
-    if a["right_x"] <= b["left_x"]:
-        x_gap = b["left_x"] - a["right_x"]
-    elif b["right_x"] <= a["left_x"]:
-        x_gap = a["left_x"] - b["right_x"]
-    else:
-        x_gap = 0.0  # footprints overlap in X -- directly above/below, not a horizontal gap
-    height_up = b["top_z"] - a["top_z"]
-    straight_dist = (x_gap ** 2 + height_up ** 2) ** 0.5
-    return x_gap, height_up, straight_dist
-
-edges = {}  # frozenset({i, j}) -> (x_gap, height_up, i, j) -- keeps the smallest x_gap seen per pair
-for i, p in enumerate(platform_data):
-    neighbor_dists = []
-    for j, q in enumerate(platform_data):
-        if i == j:
-            continue
-        x_gap, height_up, straight_dist = edge_gap(p, q)
-        neighbor_dists.append((straight_dist, j, x_gap, height_up))
-    neighbor_dists.sort(key=lambda t: t[0])
-    for straight_dist, j, x_gap, height_up in neighbor_dists[:NUM_NEAREST_NEIGHBORS]:
-        key = frozenset((i, j))
-        if key not in edges or x_gap < edges[key][0]:
-            edges[key] = (x_gap, height_up, i, j)
-
-label_to_index = {p["label"]: idx for idx, p in enumerate(platform_data)}
-for label_a, label_b in REFERENCE_GAP_LABEL_PAIRS:
-    if label_a not in label_to_index or label_b not in label_to_index:
-        continue  # platform not present in this room/run -- skip rather than error
-    i, j = label_to_index[label_a], label_to_index[label_b]
-    x_gap, height_up, _ = edge_gap(platform_data[i], platform_data[j])
-    edges[frozenset((i, j))] = (x_gap, height_up, i, j)
-
-gaps = []
-for x_gap, height_up, i, j in edges.values():
-    if x_gap <= 0:
-        continue  # vertically stacked / overlapping footprints -- not a horizontal traversal gap
-    p, q = platform_data[i], platform_data[j]
-    # Orient from -> to as lower -> higher so height_up is always the climb (never negative).
-    if height_up < 0:
-        src, dst, height_up = q, p, -height_up
-    else:
-        src, dst = p, q
-
-    reachable_by = []
-    tightest_margin = None
-    for method_name, max_dist, max_height in [
-        ("jump", max_jump_distance, max_jump_height),
-        ("wall_jump", wall_jump_max_distance, wall_jump_max_height),
-        ("dodge", dodge_distance, 0.0),
-    ]:
-        height_ok = height_up <= max_height if height_up > 0 else True
-        if x_gap <= max_dist and height_ok:
-            reachable_by.append(method_name)
-            margin_fraction = x_gap / max_dist if max_dist > 0 else 1.0
-            if tightest_margin is None or margin_fraction < tightest_margin:
-                tightest_margin = margin_fraction
-
-    tolerance = "tight" if (tightest_margin is not None and tightest_margin >= tight_tolerance_fraction) else "comfortable"
-    if not reachable_by:
-        tolerance = "tight"  # unreachable by any measured method -- flag as tight, not silently comfortable
-
-    gaps.append({
-        "from": [src["right_x"] if src["right_x"] <= dst["left_x"] else src["left_x"], src["top_z"]],
-        "to": [dst["left_x"] if src["right_x"] <= dst["left_x"] else dst["right_x"], dst["top_z"]],
-        "distance": x_gap,
-        "reachable_by": reachable_by,
-        "tolerance": tolerance,
-    })
+gaps = _fe.compute_gaps(
+    platform_data,
+    max_jump_distance, max_jump_height,
+    wall_jump_max_distance, wall_jump_max_height,
+    dodge_distance,
+    tight_tolerance_fraction=tight_tolerance_fraction,
+)
 
 # ---- Enemy spacing (provisional) ----
 enemy_spacing = []
@@ -783,6 +842,7 @@ def build_extract_command(room_id_name: str, biome_name: str, output_path: str) 
         .replace("__CHARACTER_BP_PATH__", CHARACTER_BP_PATH)
         .replace("__GAMEPLAY_PLANE_Y_BAND__", repr(GAMEPLAY_PLANE_Y_BAND))
         .replace("__TIGHT_TOLERANCE_FRACTION__", repr(TIGHT_TOLERANCE_FRACTION))
+        .replace("__TOOLS_DIR__", TOOLS_DIR)
     )
 
 

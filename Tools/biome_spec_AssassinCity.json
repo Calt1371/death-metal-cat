@@ -18,6 +18,8 @@
   "gameplay_spacing": {
     "gaps": [
       {
+        "from_label": "OneWayPlatform13",
+        "to_label": "OneWayPlatform14",
         "from": [
           771.5000118128955,
           900.0
@@ -33,6 +35,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform11",
+        "to_label": "OneWayPlatform12",
         "from": [
           993.920003592968,
           1341.8900014221667
@@ -49,6 +53,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform14",
+        "to_label": "OneWayPlatform11",
         "from": [
           573.920003592968,
           1195.8901564221667
@@ -65,6 +71,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform7",
+        "to_label": "OneWayPlatform14",
         "from": [
           103.92000359296799,
           921.8900014221668
@@ -80,6 +88,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "Floor_ROOM1_00_FlatRun2",
+        "to_label": "Floor_ROOM1_00_FlatRun",
         "from": [
           -2064.5,
           494.0001
@@ -97,6 +107,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform2",
+        "to_label": "OneWayPlatform3",
         "from": [
           -1375.4999976418912,
           810.0
@@ -113,6 +125,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform4",
+        "to_label": "OneWayPlatform5",
         "from": [
           -1944.5,
           1000.0
@@ -129,6 +143,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform8",
+        "to_label": "OneWayPlatform7",
         "from": [
           -416.079996407032,
           801.8900014221668
@@ -145,6 +161,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform7",
+        "to_label": "OneWayPlatform10",
         "from": [
           -238.40000373125076,
           921.8900014221668
@@ -161,6 +179,8 @@
         "tolerance": "comfortable"
       },
       {
+        "from_label": "OneWayPlatform14",
+        "to_label": "OneWayPlatform15",
         "from": [
           231.59999626874924,
           1195.8901564221667
@@ -174,6 +194,8 @@
         "tolerance": "tight"
       },
       {
+        "from_label": "OneWayPlatform10",
+        "to_label": "OneWayPlatform15",
         "from": [
           -336.079996407032,
           1101.8900014221667
@@ -187,6 +209,8 @@
         "tolerance": "tight"
       },
       {
+        "from_label": "OneWayPlatform11",
+        "to_label": "OneWayPlatform15",
         "from": [
           651.5999962687492,
           1341.8900014221667

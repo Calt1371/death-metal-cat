@@ -1,0 +1,123 @@
+{
+  "gdd_source_file": "Death_Metal_Cat_GDD_v3.docx",
+  "room_roles": {
+    "total_shells_documented_in_gdd": 9,
+    "traversed_per_playthrough_documented_in_gdd": 8,
+    "sequence_documented_in_gdd": "Room1 -> Room2 -> Room3 -> (Room4A or Room4B) -> Room5 -> Room6 -> Room7 -> Room8",
+    "branch_rooms": [
+      "Room4A",
+      "Room4B"
+    ],
+    "reconvergence_room": "Room5",
+    "biome_end_room": "Room8",
+    "biome_end_status_documented_in_gdd": "placeholder marker; full boss encounter is a stretch goal, not built",
+    "real_ERoomID_enum_sequence": [
+      "Room1",
+      "Room2",
+      "Room3",
+      "Room4A",
+      "Room4B",
+      "Room5",
+      "Room6",
+      "Room7",
+      "Room8"
+    ],
+    "matches_real_enum": true
+  },
+  "movement_constants_named_in_gdd": {
+    "constants_referenced_by_name": [
+      "JumpZVelocity",
+      "AirControl",
+      "WallJumpCommitmentDuration",
+      "jump distance",
+      "wall-jump reach",
+      "dodge distance"
+    ],
+    "numeric_values_documented_in_gdd": false,
+    "note": "Confirmed by reading every paragraph and table cell in Death_Metal_Cat_GDD_v3.docx: Section 4.3 narrates that JumpZVelocity, AirControl, and WallJumpCommitmentDuration previously drifted from their \"documented C++ defaults\" -- it names these constants but states no numbers itself anywhere in the document. The numeric comparison this agent actually performs is cpp_documented_defaults (DeathMetalCatCharacter.h) vs live_cdo_values (queried below), since that's the real documented baseline the GDD's own text points to."
+  },
+  "agent_roster": [
+    {
+      "Agent": "Quip Generator",
+      "Role": "Writes a short in-character line + sound-bite tag for kill/damage/environment triggers.",
+      "Input": "Trigger type, character profile",
+      "Output": "JSON: line + sound tag",
+      "Status": "Proven end-to-end"
+    },
+    {
+      "Agent": "Foundation Extractor",
+      "Role": "[NEW v3] Measures a hand-built golden room once per biome: platform/gap spacing and reachability (jump/wall-jump/dodge, live-queried against the character CDO, never hardcoded), plus 2D sprite scale and HSV color-value consistency across placed instances. Also ingests the GDD's documented movement constants and room-role assumptions, and halts if they mismatch the live-queried values, rather than letting the pipeline proceed on stale numbers.",
+      "Input": "Golden room level asset, GDD (read once, passed downstream as structured data)",
+      "Output": "biome_spec_<Biome>.json, gdd_reference.json",
+      "Status": "Proven \u2014 built, committed, hash-verified on Room1/AssassinCity"
+    },
+    {
+      "Agent": "Room Variation Generator",
+      "Role": "[UPDATED v3, replaces old Room Geometry Designer generation step] Composes a new room's platforming layout and 2D dressing by drawing on biome_spec.json's measured spacing/reachability rules and gdd_reference.json's per-room role, rather than a fixed piece vocabulary. Places enemy/pickup spawn markers within the generated geometry.",
+      "Input": "biome_spec.json, gdd_reference.json, cataloged asset pool (Asset Cataloger, in progress)",
+      "Output": "JSON: ordered piece sequence + spawn marker positions + dressing assignments",
+      "Status": "In progress \u2014 6 test room variations generated on Room1's asset set; full asset-pool-driven generation pending Asset Cataloger"
+    },
+    {
+      "Agent": "Reachability Verifier",
+      "Role": "[NEW v3] Independently re-checks every gap in a generated room against biome_spec.json's measured movement constants \u2014 the deterministic (non-LLM) validation pass, now run against the new generator's output rather than the retired fixed-vocabulary method's.",
+      "Input": "Generator output, biome_spec.json",
+      "Output": "Pass/fail per gap + flagged issues",
+      "Status": "Scoped \u2014 reuses Foundation Extractor's existing reachability logic as a shared source of truth; build in progress"
+    },
+    {
+      "Agent": "Stress Tester",
+      "Role": "[NEW v3] Deeper, exploratory checks beyond simple pass/fail reachability: whether a room's validity holds up if movement constants are later retuned, whether a technically-reachable gap requires frame-perfect input rather than a comfortable margin, and other edge cases the reachability formula alone has been shown to miss.",
+      "Input": "Verified room output, gdd_reference.json",
+      "Output": "Flagged risk/edge-case report",
+      "Status": "Scoped, not yet built"
+    },
+    {
+      "Agent": "Asset Cataloger",
+      "Role": "[NEW v3, planned] Scans a folder of biome assets (beyond the fixed set already measured in Room1) and outputs footprint, alignment, layer, and role data per asset, so the Room Variation Generator can draw freely from a growing asset pool rather than a hand-fixed set.",
+      "Input": "Asset folder, biome name",
+      "Output": "asset_catalog_<Biome>.json",
+      "Status": "Scoped, not yet built"
+    },
+    {
+      "Agent": "Level & Encounter Designer",
+      "Role": "Given a room's difficulty tier and the spawn markers left in the generated geometry, decides what (if anything) populates each marker \u2014 enemy type or pickup type \u2014 driving an escalating difficulty curve across the run.",
+      "Input": "Difficulty tier + room's marker list",
+      "Output": "JSON: per-marker population decision",
+      "Status": "Schema designed; script build in progress"
+    },
+    {
+      "Agent": "Balance/QA Reviewer",
+      "Role": "Reads level/encounter output and flags risk spikes or scaling issues.",
+      "Input": "Encounter JSON, attribute progression curve",
+      "Output": "Flagged issues + rationale",
+      "Status": "Draft implementation exists (Tools/balance_qa_reviewer.py) but not yet committed or verified against real Level & Encounter Designer output"
+    }
+  ],
+  "movement_constants_check": {
+    "cpp_documented_defaults": {
+      "JumpZVelocity": 773.22265625,
+      "WallJumpForceHorizontal": 600.0,
+      "WallJumpForceVertical": 700.0,
+      "DodgeImpulseStrength": 1200.0,
+      "DodgeDuration": 0.75,
+      "AirControl": 1.0,
+      "WallJumpCommitmentDuration": 0.15
+    },
+    "cpp_only_constants_not_yet_live_queried": [
+      "AirControl",
+      "WallJumpCommitmentDuration"
+    ],
+    "live_cdo_values": {
+      "gravity_z": 980.0,
+      "jump_z_velocity": 773.22265625,
+      "max_walk_speed": 600.0,
+      "wall_jump_force_horizontal": 600.0,
+      "wall_jump_force_vertical": 699.23876953125,
+      "dodge_impulse_strength": 1200.0,
+      "dodge_duration": 0.75
+    },
+    "tolerance_fraction": 0.01,
+    "mismatches": []
+  }
+}

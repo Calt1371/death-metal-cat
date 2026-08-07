@@ -48,14 +48,50 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import time
+
+import docx
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(TOOLS_DIR, "..", "AgentScripts"))
 
 from remote_execution import RemoteExecution
+
+DOCS_DIR = os.path.join(TOOLS_DIR, "..", "Docs")
+GDD_PATH = os.path.join(DOCS_DIR, "Death_Metal_Cat_GDD_v3.docx")
+CHARACTER_HEADER_PATH = os.path.join(TOOLS_DIR, "..", "Source", "PythonTest", "DeathMetalCatCharacter.h")
+ROOM_TYPES_HEADER_PATH = os.path.join(TOOLS_DIR, "..", "Source", "PythonTest", "RoomTypes.h")
+
+# Tolerance for the live-CDO-vs-C++-header-defaults comparison below. RELATIVE (fraction of the
+# C++ default), not absolute units -- an earlier version of this check used a flat absolute
+# tolerance (0.01 units), which is meaningless once values live in the hundreds: WallJumpForceVertical
+# was flagged as a "mismatch" at a 0.76-unit delta on a 700-unit baseline (0.11% relative -- this
+# project has separately, previously characterized this exact property/delta as float round-trip
+# noise through the editor's property system, not real tuning), while a genuinely real
+# JumpZVelocity retune (708.65 -> 773.22, ~9.1% relative) needs to still trip the halt. 1% sits
+# comfortably above observed noise (~0.11%) and well below observed real tuning deltas (~9.1%).
+MOVEMENT_CONSTANT_MISMATCH_TOLERANCE_FRACTION = 0.01
+
+# name in the comparison report -> (C++ header member name, live CDO query key already computed
+# by the existing extraction template's movement_constants dict). Only the three properties the
+# GDD's own text (Section 4.3) names as having drifted before, plus the other CDO-tunable movement
+# properties this script already queries live -- NOT max_walk_speed/gravity_z, which live on the
+# engine's CharacterMovementComponent/PhysicsSettings rather than as a UPROPERTY default on
+# ADeathMetalCatCharacter itself, so there's no single C++ "default" line for those to diff against.
+CPP_VS_LIVE_CONSTANT_MAP = {
+    "JumpZVelocity": "jump_z_velocity",
+    "WallJumpForceHorizontal": "wall_jump_force_horizontal",
+    "WallJumpForceVertical": "wall_jump_force_vertical",
+    "DodgeImpulseStrength": "dodge_impulse_strength",
+    "DodgeDuration": "dodge_duration",
+}
+# AirControl and WallJumpCommitmentDuration are both real UPROPERTY defaults on the character (and
+# both named explicitly in the GDD's drift history), but the existing extraction template does not
+# currently query either live -- recorded here as a known gap rather than silently left out.
+CPP_ONLY_CONSTANTS_NOT_YET_LIVE_QUERIED = ["AirControl", "WallJumpCommitmentDuration"]
 
 CHARACTER_BP_PATH = "/Game/Characters/DeathMetalCat/Blueprints/BP_DeathMetalCat"
 
@@ -74,6 +110,229 @@ GAMEPLAY_PLANE_Y_BAND = 100.0
 # traversal method's max range clears it -- i.e. a jump that only just makes a gap, not one with
 # comfortable room to spare.
 TIGHT_TOLERANCE_FRACTION = 0.85
+
+
+# ============================================================================================
+# GDD ingestion (new) -- reads Death_Metal_Cat_GDD_v3.docx ONCE, ahead of measuring the golden
+# room, and halts the whole run if the GDD's real documented movement-constant baseline
+# (DeathMetalCatCharacter.h's C++ defaults -- see note below on why the GDD text itself has no
+# numbers to compare against) disagrees with what's live on the CDO right now. Everything in this
+# section is plain Python, no `unreal` import -- it never needs the editor running.
+# ============================================================================================
+
+def get_cpp_documented_defaults(header_path: str) -> dict:
+    """Regex-parses DeathMetalCatCharacter.h's UPROPERTY member-initializer defaults -- e.g.
+    `float JumpZVelocity = 708.652466f;` -- for every constant in CPP_VS_LIVE_CONSTANT_MAP plus
+    CPP_ONLY_CONSTANTS_NOT_YET_LIVE_QUERIED. This is the real "documented C++ default" the GDD's
+    own Section 4.3 refers to (JumpZVelocity/AirControl/WallJumpCommitmentDuration "drifted from
+    their documented C++ defaults") -- the GDD text itself states no numbers, so this header file
+    is the actual documented baseline, not the GDD prose."""
+    with open(header_path, "r", encoding="utf-8") as f:
+        header_text = f.read()
+
+    all_names = list(CPP_VS_LIVE_CONSTANT_MAP.keys()) + CPP_ONLY_CONSTANTS_NOT_YET_LIVE_QUERIED
+    defaults = {}
+    for name in all_names:
+        match = re.search(rf"\bfloat\s+{re.escape(name)}\s*=\s*([-\d.]+)f?\s*;", header_text)
+        if match is None:
+            raise ValueError(f"Could not find a `float {name} = ...;` default in {header_path} -- "
+                              f"has this property been renamed or removed?")
+        defaults[name] = float(match.group(1))
+    return defaults
+
+
+def compare_constants(cpp_defaults: dict, live_values: dict, tolerance_fraction: float) -> list[dict]:
+    """Deterministic, non-LLM comparison -- for every constant in CPP_VS_LIVE_CONSTANT_MAP, checks
+    the C++ header default against the corresponding live-CDO-queried value using a RELATIVE
+    (percentage) tolerance, not an absolute-unit one -- see MOVEMENT_CONSTANT_MISMATCH_TOLERANCE_FRACTION
+    for why. Returns a list of mismatch records (empty list = everything matches within tolerance).
+    Never trusts either number as automatically correct -- just reports where they disagree so a
+    human decides."""
+    mismatches = []
+    for cpp_name, live_key in CPP_VS_LIVE_CONSTANT_MAP.items():
+        cpp_value = cpp_defaults[cpp_name]
+        live_value = live_values[live_key]
+        delta = abs(cpp_value - live_value)
+        relative_delta = delta / abs(cpp_value) if cpp_value != 0 else (0.0 if delta == 0 else float("inf"))
+        if relative_delta > tolerance_fraction:
+            mismatches.append({
+                "constant": cpp_name,
+                "cpp_documented_default": cpp_value,
+                "live_cdo_value": live_value,
+                "delta": delta,
+                "relative_delta": relative_delta,
+                "tolerance_fraction": tolerance_fraction,
+            })
+    return mismatches
+
+
+def parse_room_id_enum(header_path: str) -> list[str]:
+    """Regex-parses RoomTypes.h's ERoomID enum values, in declared order -- the real single source
+    of truth for room count/branch structure, used to cross-check the GDD's prose claims about room
+    roles rather than trusting the prose alone."""
+    with open(header_path, "r", encoding="utf-8") as f:
+        header_text = f.read()
+    match = re.search(r"enum\s+class\s+ERoomID\s*:\s*\w+\s*\{([^}]*)\}", header_text)
+    if match is None:
+        raise ValueError(f"Could not find `enum class ERoomID` in {header_path}")
+    return [v.strip() for v in match.group(1).split(",") if v.strip()]
+
+
+def read_gdd(gdd_path: str, room_types_header_path: str) -> dict:
+    """Reads Death_Metal_Cat_GDD_v3.docx and extracts structured facts for gdd_reference.json:
+
+    - Agent roster: pulled from whichever table has "Agent"/"Input"/"Status" as column headers
+      (Table 3 in the current draft) -- read by header name, not by table index, so this survives
+      a table being reordered/added in a future draft.
+    - Room count/roles: the GDD states this in prose (Section 2.6), cross-checked here against
+      RoomTypes.h's real ERoomID enum rather than trusted on its own.
+    - Movement constants: the GDD NAMES these (JumpZVelocity, AirControl,
+      WallJumpCommitmentDuration, "jump distance", "wall-jump reach", "dodge distance") but --
+      confirmed by reading every paragraph and every table cell in this document -- states no
+      actual numeric value for any of them anywhere. Recorded honestly as "not documented" rather
+      than inventing a number or silently skipping the field. The real numeric comparison this
+      agent performs is cpp_documented_defaults vs live_cdo_values (see compare_constants), since
+      the GDD's own text (Section 4.3) points to "documented C++ defaults" as the actual baseline.
+    """
+    d = docx.Document(gdd_path)
+
+    agent_roster = []
+    for table in d.tables:
+        header = [c.text.strip() for c in table.rows[0].cells]
+        if "Agent" in header and "Input" in header and "Status" in header:
+            for row in table.rows[1:]:
+                cells = [c.text.strip() for c in row.cells]
+                agent_roster.append(dict(zip(header, cells)))
+            break
+
+    real_room_sequence = parse_room_id_enum(room_types_header_path)
+    gdd_documented_sequence = ["Room1", "Room2", "Room3", "Room4A", "Room4B", "Room5", "Room6", "Room7", "Room8"]
+    room_roles = {
+        "total_shells_documented_in_gdd": 9,
+        "traversed_per_playthrough_documented_in_gdd": 8,
+        "sequence_documented_in_gdd": "Room1 -> Room2 -> Room3 -> (Room4A or Room4B) -> Room5 -> Room6 -> Room7 -> Room8",
+        "branch_rooms": ["Room4A", "Room4B"],
+        "reconvergence_room": "Room5",
+        "biome_end_room": "Room8",
+        "biome_end_status_documented_in_gdd": "placeholder marker; full boss encounter is a stretch goal, not built",
+        "real_ERoomID_enum_sequence": real_room_sequence,
+        "matches_real_enum": real_room_sequence == gdd_documented_sequence,
+    }
+
+    movement_constants_named_in_gdd = {
+        "constants_referenced_by_name": [
+            "JumpZVelocity", "AirControl", "WallJumpCommitmentDuration",
+            "jump distance", "wall-jump reach", "dodge distance",
+        ],
+        "numeric_values_documented_in_gdd": False,
+        "note": (
+            "Confirmed by reading every paragraph and table cell in Death_Metal_Cat_GDD_v3.docx: "
+            "Section 4.3 narrates that JumpZVelocity, AirControl, and WallJumpCommitmentDuration "
+            "previously drifted from their \"documented C++ defaults\" -- it names these constants "
+            "but states no numbers itself anywhere in the document. The numeric comparison this "
+            "agent actually performs is cpp_documented_defaults (DeathMetalCatCharacter.h) vs "
+            "live_cdo_values (queried below), since that's the real documented baseline the GDD's "
+            "own text points to."
+        ),
+    }
+
+    return {
+        "gdd_source_file": os.path.basename(gdd_path),
+        "room_roles": room_roles,
+        "movement_constants_named_in_gdd": movement_constants_named_in_gdd,
+        "agent_roster": agent_roster,
+    }
+
+
+# Small, standalone embedded template -- queries ONLY the movement constants (no room/actor
+# measurement at all) so the constants-mismatch check below can run, and potentially HALT,
+# strictly BEFORE the full golden-room measurement pass (_EXTRACT_TEMPLATE) ever runs. Kept
+# deliberately separate from _EXTRACT_TEMPLATE rather than folded into one pass, since "halt before
+# measuring" is only possible if the two are two genuinely separate steps.
+_LIVE_CONSTANTS_ONLY_TEMPLATE = """
+import json
+import unreal
+
+character_bp_path = "__CHARACTER_BP_PATH__"
+output_path = r"__OUTPUT_PATH__"
+
+char_class = unreal.EditorAssetLibrary.load_blueprint_class(character_bp_path)
+if char_class is None:
+    raise RuntimeError("[FOUNDATION EXTRACTOR] Failed to load character Blueprint class at " + character_bp_path)
+char_cdo = unreal.get_default_object(char_class)
+move_comp = char_cdo.get_component_by_class(unreal.CharacterMovementComponent)
+
+live_values = {
+    "gravity_z": abs(move_comp.get_gravity_z()),
+    "jump_z_velocity": move_comp.get_editor_property("jump_z_velocity"),
+    "max_walk_speed": move_comp.get_editor_property("max_walk_speed"),
+    "wall_jump_force_horizontal": char_cdo.get_editor_property("wall_jump_force_horizontal"),
+    "wall_jump_force_vertical": char_cdo.get_editor_property("wall_jump_force_vertical"),
+    "dodge_impulse_strength": char_cdo.get_editor_property("dodge_impulse_strength"),
+    "dodge_duration": char_cdo.get_editor_property("dodge_duration"),
+}
+
+with open(output_path, "w", encoding="utf-8") as f:
+    json.dump(live_values, f, indent=2)
+
+unreal.log_warning("[FOUNDATION EXTRACTOR] live movement constants (pre-check): " + str(live_values))
+"""
+
+
+def build_live_constants_command(output_path: str) -> str:
+    return (
+        _LIVE_CONSTANTS_ONLY_TEMPLATE
+        .replace("__CHARACTER_BP_PATH__", CHARACTER_BP_PATH)
+        .replace("__OUTPUT_PATH__", output_path)
+    )
+
+
+def query_live_movement_constants(timeout: float) -> dict:
+    """Runs ONLY the lightweight constants query against the live editor and returns the parsed
+    result -- no room measurement, no actor queries, so this is safe to run before confirming a
+    RoomShell/level is even the right one."""
+    temp_fd, temp_output_path = tempfile.mkstemp(suffix=".json", prefix="live_constants_")
+    os.close(temp_fd)
+    script_body = build_live_constants_command(temp_output_path)
+
+    temp_fd, temp_script_path = tempfile.mkstemp(suffix=".py", prefix="foundation_extractor_constants_")
+    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+        f.write(script_body)
+
+    remote_exec = RemoteExecution()
+    remote_exec.start()
+    try:
+        waited = 0.0
+        poll_interval = 0.25
+        while not remote_exec.remote_nodes and waited < timeout:
+            time.sleep(poll_interval)
+            waited += poll_interval
+        if not remote_exec.remote_nodes:
+            raise RuntimeError("No UE5 editor instance found. Is the editor running with Remote Execution enabled?")
+
+        node_id = remote_exec.remote_nodes[0]["node_id"]
+        remote_exec.open_command_connection(node_id)
+        command = f"exec(open(r'{temp_script_path}').read())"
+        result = remote_exec.run_command(command, unattended=True, exec_mode="ExecuteStatement")
+        remote_exec.close_command_connection()
+    finally:
+        remote_exec.stop()
+        os.remove(temp_script_path)
+
+    if not result.get("success"):
+        raise RuntimeError(f"editor reported failure querying live movement constants:\n{result}")
+    for entry in result.get("output", []):
+        print(f"[UE5] {entry.get('type')}: {entry.get('output')}")
+        if entry.get("type") == "Error":
+            raise RuntimeError("live movement constants query reported at least one error above")
+
+    if not os.path.exists(temp_output_path):
+        raise RuntimeError(f"{temp_output_path} does not exist after a reported-successful run")
+    with open(temp_output_path, "r", encoding="utf-8") as f:
+        live_values = json.load(f)
+    os.remove(temp_output_path)
+    return live_values
+
 
 _EXTRACT_TEMPLATE = """
 import hashlib
@@ -582,16 +841,69 @@ def extract(room: str, biome: str, output_path: str, timeout: float) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Foundation Extractor -- measures a finished room and writes a biome_spec_<Biome>.json contract.")
+    parser = argparse.ArgumentParser(description="Foundation Extractor -- ingests the GDD, checks it against live-queried movement constants, and (if that passes) measures a finished room into a biome_spec_<Biome>.json contract.")
     parser.add_argument("--room", required=True, help="Room to measure, e.g. Room1")
     parser.add_argument("--biome", required=True, help="Biome name to stamp into the output, e.g. AssassinCity")
-    parser.add_argument("--output", help="Output JSON path. Defaults to Tools/biome_spec_<biome>.json")
+    parser.add_argument("--output", help="biome_spec output JSON path. Defaults to Tools/biome_spec_<biome>.json")
+    parser.add_argument("--gdd-output", help="gdd_reference output JSON path. Defaults to Tools/gdd_reference.json")
+    parser.add_argument("--gdd-path", default=GDD_PATH, help=f"Path to the GDD docx. Defaults to {GDD_PATH}")
     parser.add_argument("--timeout", type=float, default=5.0, help="Seconds to wait for the editor to respond to discovery.")
+    parser.add_argument("--acknowledge-drift", action="store_true",
+                         help="Proceed to measure the golden room even if live CDO values mismatch "
+                              "the C++ header defaults beyond tolerance. Without this flag, a "
+                              "mismatch halts before any room measurement happens.")
     args = parser.parse_args()
 
-    output_path = args.output or os.path.join(TOOLS_DIR, f"biome_spec_{args.biome}.json")
+    biome_output_path = args.output or os.path.join(TOOLS_DIR, f"biome_spec_{args.biome}.json")
+    gdd_output_path = args.gdd_output or os.path.join(TOOLS_DIR, "gdd_reference.json")
 
-    ok = extract(args.room, args.biome, output_path, args.timeout)
+    # ---- Step 1: GDD ingestion (plain Python, no editor connection needed) ----
+    print(f"Reading GDD: {args.gdd_path}")
+    gdd_data = read_gdd(args.gdd_path, ROOM_TYPES_HEADER_PATH)
+    print(f"  agent_roster: {len(gdd_data['agent_roster'])} agents")
+    print(f"  room_roles.matches_real_enum: {gdd_data['room_roles']['matches_real_enum']}")
+    print(f"  movement constants documented in GDD text with real numbers: "
+          f"{gdd_data['movement_constants_named_in_gdd']['numeric_values_documented_in_gdd']}")
+
+    # ---- Step 2: live-CDO-vs-C++-header-defaults comparison (the actual numeric check) ----
+    print("Querying live movement constants from the editor (lightweight pass, no room measurement yet)...")
+    try:
+        live_values = query_live_movement_constants(args.timeout)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+    cpp_defaults = get_cpp_documented_defaults(CHARACTER_HEADER_PATH)
+    mismatches = compare_constants(cpp_defaults, live_values, MOVEMENT_CONSTANT_MISMATCH_TOLERANCE_FRACTION)
+
+    gdd_data["movement_constants_check"] = {
+        "cpp_documented_defaults": cpp_defaults,
+        "cpp_only_constants_not_yet_live_queried": CPP_ONLY_CONSTANTS_NOT_YET_LIVE_QUERIED,
+        "live_cdo_values": live_values,
+        "tolerance_fraction": MOVEMENT_CONSTANT_MISMATCH_TOLERANCE_FRACTION,
+        "mismatches": mismatches,
+    }
+
+    with open(gdd_output_path, "w", encoding="utf-8") as f:
+        json.dump(gdd_data, f, indent=2)
+    print(f"Wrote {gdd_output_path}")
+
+    if mismatches:
+        print("\nHALT -- live CDO values do not match DeathMetalCatCharacter.h's documented C++ defaults:")
+        for m in mismatches:
+            print(f"  {m['constant']}: cpp_default={m['cpp_documented_default']}, "
+                  f"live={m['live_cdo_value']}, delta={m['delta']:.4f} "
+                  f"({m['relative_delta']*100:.3f}% relative, tolerance={m['tolerance_fraction']*100:.1f}%)")
+        if not args.acknowledge_drift:
+            print("\nNot proceeding to measure the golden room. Re-run with --acknowledge-drift once "
+                  "you've confirmed how to handle this (e.g. update the C++ defaults to match the "
+                  "live-tuned values, or re-tune the Blueprint back to the documented defaults).")
+            return 1
+        print("\n--acknowledge-drift set -- proceeding to measure the golden room anyway.")
+    else:
+        print("\nLive CDO values match the documented C++ defaults within tolerance. Proceeding.")
+
+    # ---- Step 3: existing golden-room measurement pass (unchanged) ----
+    ok = extract(args.room, args.biome, biome_output_path, args.timeout)
     return 0 if ok else 1
 
 

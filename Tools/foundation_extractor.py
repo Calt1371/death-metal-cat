@@ -134,6 +134,53 @@ NUM_NEAREST_NEIGHBORS = 2
 REFERENCE_GAP_LABEL_PAIRS = [("OneWayPlatform11", "OneWayPlatform15")]
 
 
+def compute_derived_movement_constants(raw_values):
+    """Turns the raw CDO-queried movement properties (gravity_z, jump_z_velocity, max_walk_speed,
+    wall_jump_force_horizontal, wall_jump_force_vertical, dodge_impulse_strength, dodge_duration --
+    exactly what query_live_movement_constants() already returns) into the full derived shape
+    biome_spec_<Biome>.json's movement_constants stores (adds max_jump_height, max_jump_distance,
+    wall_jump_max_height, wall_jump_max_distance, dodge_distance).
+
+    Extracted here, same pattern as compute_gaps() -- exactly ONE copy of this formula.
+    Foundation Extractor's own embedded template calls this instead of inlining it, and
+    Tools/stress_test_room.py calls it to turn a fresh live query into the same shape
+    biome_spec.json already stores, so a "recorded vs. current" diff is apples-to-apples without
+    a second hand-copied formula.
+    """
+    gravity_z = raw_values["gravity_z"]
+    jump_z_velocity = raw_values["jump_z_velocity"]
+    max_walk_speed = raw_values["max_walk_speed"]
+    wall_jump_force_horizontal = raw_values["wall_jump_force_horizontal"]
+    wall_jump_force_vertical = raw_values["wall_jump_force_vertical"]
+    dodge_impulse_strength = raw_values["dodge_impulse_strength"]
+    dodge_duration = raw_values["dodge_duration"]
+
+    max_jump_height = jump_z_velocity ** 2 / (2 * gravity_z)
+    standing_airtime = 2 * jump_z_velocity / gravity_z
+    max_jump_distance = max_walk_speed * standing_airtime
+
+    wall_jump_max_height = wall_jump_force_vertical ** 2 / (2 * gravity_z)
+    wall_jump_airtime = 2 * wall_jump_force_vertical / gravity_z
+    wall_jump_max_distance = wall_jump_force_horizontal * wall_jump_airtime
+
+    dodge_distance = dodge_impulse_strength * dodge_duration
+
+    return {
+        "gravity_z": gravity_z,
+        "jump_z_velocity": jump_z_velocity,
+        "max_walk_speed": max_walk_speed,
+        "max_jump_height": max_jump_height,
+        "max_jump_distance": max_jump_distance,
+        "wall_jump_force_horizontal": wall_jump_force_horizontal,
+        "wall_jump_force_vertical": wall_jump_force_vertical,
+        "wall_jump_max_height": wall_jump_max_height,
+        "wall_jump_max_distance": wall_jump_max_distance,
+        "dodge_impulse_strength": dodge_impulse_strength,
+        "dodge_duration": dodge_duration,
+        "dodge_distance": dodge_distance,
+    }
+
+
 def compute_gaps(
     platform_data,
     max_jump_distance,
@@ -469,7 +516,21 @@ def query_live_movement_constants(timeout: float) -> dict:
 _EXTRACT_TEMPLATE = """
 import hashlib
 import json
+import sys as _sys
 import unreal
+
+# Single import, reused below for both compute_derived_movement_constants() and compute_gaps() --
+# one implementation of each, this module is just a second caller of both.
+_sys.path.insert(0, r"__TOOLS_DIR__")
+# UE's embedded Python process persists across separate send_to_ue.py/RemoteExecution calls (it's
+# the same long-running editor session, not a fresh process per invocation) -- a plain `import`
+# would silently reuse whatever version of this module was already cached in sys.modules from an
+# earlier run this session, even after the file on disk has since changed. Force a fresh read every
+# time, same "never trust a cached/stale state during active development" lesson this project has
+# already learned the hard way with stale compiled DLLs.
+if "foundation_extractor" in _sys.modules:
+    del _sys.modules["foundation_extractor"]
+import foundation_extractor as _fe
 
 room_id_name = "__ROOM_ID_NAME__"
 biome_name = "__BIOME_NAME__"
@@ -506,38 +567,26 @@ if char_class is None:
 char_cdo = unreal.get_default_object(char_class)
 move_comp = char_cdo.get_component_by_class(unreal.CharacterMovementComponent)
 
-gravity_z = abs(move_comp.get_gravity_z())
-jump_z_velocity = move_comp.get_editor_property("jump_z_velocity")
-max_walk_speed = move_comp.get_editor_property("max_walk_speed")
-wall_jump_force_horizontal = char_cdo.get_editor_property("wall_jump_force_horizontal")
-wall_jump_force_vertical = char_cdo.get_editor_property("wall_jump_force_vertical")
-dodge_impulse_strength = char_cdo.get_editor_property("dodge_impulse_strength")
-dodge_duration = char_cdo.get_editor_property("dodge_duration")
-
-max_jump_height = jump_z_velocity ** 2 / (2 * gravity_z)
-_standing_airtime = 2 * jump_z_velocity / gravity_z
-max_jump_distance = max_walk_speed * _standing_airtime
-
-wall_jump_max_height = wall_jump_force_vertical ** 2 / (2 * gravity_z)
-_wall_jump_airtime = 2 * wall_jump_force_vertical / gravity_z
-wall_jump_max_distance = wall_jump_force_horizontal * _wall_jump_airtime
-
-dodge_distance = dodge_impulse_strength * dodge_duration
-
-movement_constants = {
-    "gravity_z": gravity_z,
-    "jump_z_velocity": jump_z_velocity,
-    "max_walk_speed": max_walk_speed,
-    "max_jump_height": max_jump_height,
-    "max_jump_distance": max_jump_distance,
-    "wall_jump_force_horizontal": wall_jump_force_horizontal,
-    "wall_jump_force_vertical": wall_jump_force_vertical,
-    "wall_jump_max_height": wall_jump_max_height,
-    "wall_jump_max_distance": wall_jump_max_distance,
-    "dodge_impulse_strength": dodge_impulse_strength,
-    "dodge_duration": dodge_duration,
-    "dodge_distance": dodge_distance,
+raw_movement_values = {
+    "gravity_z": abs(move_comp.get_gravity_z()),
+    "jump_z_velocity": move_comp.get_editor_property("jump_z_velocity"),
+    "max_walk_speed": move_comp.get_editor_property("max_walk_speed"),
+    "wall_jump_force_horizontal": char_cdo.get_editor_property("wall_jump_force_horizontal"),
+    "wall_jump_force_vertical": char_cdo.get_editor_property("wall_jump_force_vertical"),
+    "dodge_impulse_strength": char_cdo.get_editor_property("dodge_impulse_strength"),
+    "dodge_duration": char_cdo.get_editor_property("dodge_duration"),
 }
+# compute_derived_movement_constants() lives in ONE place (see the comment on the shared import
+# above) -- this is the same function Tools/stress_test_room.py calls on a fresh live query, so a
+# "recorded vs. current" diff is always apples-to-apples.
+movement_constants = _fe.compute_derived_movement_constants(raw_movement_values)
+
+max_jump_height = movement_constants["max_jump_height"]
+max_jump_distance = movement_constants["max_jump_distance"]
+wall_jump_max_height = movement_constants["wall_jump_max_height"]
+wall_jump_max_distance = movement_constants["wall_jump_max_distance"]
+dodge_distance = movement_constants["dodge_distance"]
+
 unreal.log_warning("[FOUNDATION EXTRACTOR] live movement constants: " + str(movement_constants))
 
 # ---- LIVE enemy constants -- deliberately skip shoot_range / ranged-attack properties ----
@@ -582,13 +631,10 @@ def get_bounds(actor):
 
 # ---- Gap computation: gameplay plane = world (X, Z); world Y is depth, handled separately.
 # The actual gap-computation/reachability math lives in ONE place, Tools/foundation_extractor.py's
-# own compute_gaps() -- imported here rather than duplicated, so Reachability Verifier (which
-# calls the exact same function against a generated room's platform list) can never drift out of
-# sync with what Foundation Extractor itself uses to measure the golden room. ----
-import sys as _sys
-_sys.path.insert(0, r"__TOOLS_DIR__")
-import foundation_extractor as _fe
-
+# own compute_gaps() -- imported (once, at the top of this template) rather than duplicated, so
+# Reachability Verifier (which calls the exact same function against a generated room's platform
+# list) can never drift out of sync with what Foundation Extractor itself uses to measure the
+# golden room. ----
 platform_data = []
 for a in platform_actors:
     origin, extent = get_bounds(a)

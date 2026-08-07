@@ -1,0 +1,88 @@
+[
+  {
+    "character": "deathbot",
+    "line": "Hello! I will be your assigned cause of death today. Please hold still!",
+    "sound_tag": "chirpy_beep_03",
+    "enemy_type": "DeathBotWalking"
+  },
+  {
+    "character": "deathbot",
+    "line": "Oh, a visitor! I will try to make this quick. For you, anyway!",
+    "sound_tag": "chirpy_beep_04",
+    "enemy_type": "DeathBotWalking"
+  },
+  {
+    "character": "deathbot",
+    "line": "Target acquired! Processing your complimentary destruction now. This will only hurt a lot!",
+    "sound_tag": "chirpy_beep_05",
+    "enemy_type": "DeathBotWalking"
+  },
+  {
+    "character": "deathbot",
+    "line": "You look like you need shooting. Lucky me \u2014 that is exactly what I do!",
+    "sound_tag": "chirpy_beep_06",
+    "enemy_type": "DeathBotWalking"
+  },
+  {
+    "character": "deathbot",
+    "line": "Initiating lethal contact! Thank you for choosing DeathBot as your end-of-life provider!",
+    "sound_tag": "chirpy_beep_07",
+    "enemy_type": "DeathBotWalking"
+  },
+  {
+    "character": "deathbot",
+    "line": "Initiating aerial bombardment! Have a wonderful afternoon!",
+    "sound_tag": "chirpy_thruster_03",
+    "enemy_type": "DeathBotFlying"
+  },
+  {
+    "character": "deathbot",
+    "line": "Oh, you looked up! Perfect timing. Firing now!",
+    "sound_tag": "chirpy_whirr_03",
+    "enemy_type": "DeathBotFlying"
+  },
+  {
+    "character": "deathbot",
+    "line": "Hello from above! I have located you and will now shoot you repeatedly. Please hold still!",
+    "sound_tag": "chirpy_whirr_04",
+    "enemy_type": "DeathBotFlying"
+  },
+  {
+    "character": "deathbot",
+    "line": "Altitude confirmed. Target confirmed. Fun confirmed. Commencing fire!",
+    "sound_tag": "chirpy_beep_08",
+    "enemy_type": "DeathBotFlying"
+  },
+  {
+    "character": "deathbot",
+    "line": "Surprise! I found you from up here! Now I will shoot you a whole bunch. How exciting!",
+    "sound_tag": "chirpy_whirr_05",
+    "enemy_type": "DeathBotFlying",
+    "corrected_by_critic": true
+  },
+  {
+    "character": "deathbot",
+    "line": "Oh! I appear to be destroyed. Have a wonderful day!",
+    "sound_tag": "cheerful_shutdown_03"
+  },
+  {
+    "character": "deathbot",
+    "line": "Shutting down! Please rate your destruction experience five stars!",
+    "sound_tag": "cheerful_powerdown_03"
+  },
+  {
+    "character": "deathbot",
+    "line": "Oops! Total system failure! Anyway \u2014 great meeting you!",
+    "sound_tag": "cheerful_fizzle_03"
+  },
+  {
+    "character": "deathbot",
+    "line": "Huh. Exploding. That's new. Thanks for the feedback!",
+    "sound_tag": "chirpy_fizzle_03"
+  },
+  {
+    "character": "deathbot",
+    "line": "Critical damage detected! Fun fact: this is fatal. No follow-up appointment needed. Bye!",
+    "sound_tag": "chirpy_shutdown_03"
+  }
+]

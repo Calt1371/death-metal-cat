@@ -1,0 +1,37 @@
+{
+  "ranked_gaps": [
+    {
+      "feature": "Asset Cataloger",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "Scoped, not yet built",
+      "description": "Role: Scans a folder of biome assets (beyond the fixed set already measured in Room1) and outputs footprint, alignment, layer, and role data per asset, so the Room Variation Generator can draw freely from a growing asset pool rather than a hand-fixed set.. Input: Asset folder, biome name. Output: asset_catalog_<Biome>.json",
+      "scores": {
+        "spec_clarity_score": 8,
+        "unmet_dependencies": [],
+        "reuse_score": 2,
+        "total_priority_score": 10
+      },
+      "written_justification": "'Asset Cataloger' scores 10 overall: spec-clarity keyword density 8 (how concretely the GDD's own text names an input/output schema for this feature), it has no unmet dependencies on other open gaps, and a reuse-signal score of 2 (overlap between this feature's description and the measurement vocabulary already implemented in foundation_extractor.py, this project's most-reused module). Higher spec-clarity and reuse scores raise priority; each unmet dependency lowers it, since a gap blocked on another not-yet-built system can't be confidently implemented first.",
+      "reasoning_source": "deterministic (--use-llm not set)",
+      "rank": 1
+    },
+    {
+      "feature": "Room Variation Generator",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "In progress \u2014 6 test room variations generated and since removed as scratch; Room2 and Room3 built manually via the same golden-room asset-reuse method and independently confirmed reachable by Reachability Verifier. Full asset-pool-driven generation pending Asset Cataloger.",
+      "description": "Role: Composes a new room's platforming layout and 2D dressing by drawing on biome_spec.json's measured spacing/reachability rules, rather than a fixed piece vocabulary. Places enemy/pickup spawn markers within the generated geometry.. Input: biome_spec.json, gdd_reference.json, cataloged asset pool (Asset Cataloger, in progress). Output: JSON: ordered piece sequence + spawn marker positions + dressing assignments",
+      "scores": {
+        "spec_clarity_score": 11,
+        "unmet_dependencies": [
+          "Asset Cataloger"
+        ],
+        "reuse_score": 1,
+        "total_priority_score": 9
+      },
+      "written_justification": "'Room Variation Generator' scores 9 overall: spec-clarity keyword density 11 (how concretely the GDD's own text names an input/output schema for this feature), it depends on Asset Cataloger, which is still open, and a reuse-signal score of 1 (overlap between this feature's description and the measurement vocabulary already implemented in foundation_extractor.py, this project's most-reused module). Higher spec-clarity and reuse scores raise priority; each unmet dependency lowers it, since a gap blocked on another not-yet-built system can't be confidently implemented first.",
+      "reasoning_source": "deterministic (--use-llm not set)",
+      "rank": 2
+    }
+  ],
+  "selected_feature": "Asset Cataloger"
+}

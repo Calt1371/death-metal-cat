@@ -1,0 +1,585 @@
+{
+  "biome": "AssassinCity_Room1",
+  "source_folder": "/Game/Environments/CityBiome/Room1",
+  "asset_count": 41,
+  "role_counts": {
+    "atmosphere_art": 3,
+    "scenery_prop": 5,
+    "platform": 7,
+    "texture_source": 22,
+    "material": 4
+  },
+  "assets": [
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_BackgroundMidgroundCity.SP_Room1_BackgroundMidgroundCity",
+      "name": "SP_Room1_BackgroundMidgroundCity",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1536.0,
+        "height": 1024.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "atmosphere_art",
+      "layer": "background"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_BackgroundSkyline.SP_Room1_BackgroundSkyline",
+      "name": "SP_Room1_BackgroundSkyline",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1536.0,
+        "height": 1024.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "atmosphere_art",
+      "layer": "background"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_CityRubbleDebris.SP_Room1_CityRubbleDebris",
+      "name": "SP_Room1_CityRubbleDebris",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1536.0,
+        "height": 1024.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "scenery_prop",
+      "layer": "midground"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_FloatingPlatform.SP_Room1_FloatingPlatform",
+      "name": "SP_Room1_FloatingPlatform",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1672.0,
+        "height": 941.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_ForegroundCables.SP_Room1_ForegroundCables",
+      "name": "SP_Room1_ForegroundCables",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1672.0,
+        "height": 941.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "atmosphere_art",
+      "layer": "foreground"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_GroundTile.SP_Room1_GroundTile",
+      "name": "SP_Room1_GroundTile",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1774.0,
+        "height": 887.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_LeftStructure.SP_Room1_LeftStructure",
+      "name": "SP_Room1_LeftStructure",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1536.0,
+        "height": 1024.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "scenery_prop",
+      "layer": "midground"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_LongWalkway.SP_Room1_LongWalkway",
+      "name": "SP_Room1_LongWalkway",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1536.0,
+        "height": 1024.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_LongWalkwayTopdown.SP_Room1_LongWalkwayTopdown",
+      "name": "SP_Room1_LongWalkwayTopdown",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1536.0,
+        "height": 1024.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_RightStructure.SP_Room1_RightStructure",
+      "name": "SP_Room1_RightStructure",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1289.0,
+        "height": 1220.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "scenery_prop",
+      "layer": "midground"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_StoneTileEdge.SP_Room1_StoneTileEdge",
+      "name": "SP_Room1_StoneTileEdge",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1254.0,
+        "height": 1254.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_StoneTileMossy.SP_Room1_StoneTileMossy",
+      "name": "SP_Room1_StoneTileMossy",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1254.0,
+        "height": 1254.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/SP_Room1_WalkwayPlank.SP_Room1_WalkwayPlank",
+      "name": "SP_Room1_WalkwayPlank",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 1912.0,
+        "height": 823.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CENTER_CENTER: 4>"
+      },
+      "notes": "has_default_material=True",
+      "role": "platform",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_BackgroundMidgroundCity.T_Room1_BackgroundMidgroundCity",
+      "name": "T_Room1_BackgroundMidgroundCity",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_BackgroundSkyline.T_Room1_BackgroundSkyline",
+      "name": "T_Room1_BackgroundSkyline",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_CityRubbleDebris.T_Room1_CityRubbleDebris",
+      "name": "T_Room1_CityRubbleDebris",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_FloatingPlatform.T_Room1_FloatingPlatform",
+      "name": "T_Room1_FloatingPlatform",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1672,
+        "height": 941
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_ForegroundCables.T_Room1_ForegroundCables",
+      "name": "T_Room1_ForegroundCables",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1672,
+        "height": 941
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_ForegroundCables_Mat.T_Room1_ForegroundCables_Mat",
+      "name": "T_Room1_ForegroundCables_Mat",
+      "class": "Material",
+      "footprint": null,
+      "alignment": null,
+      "notes": "supporting material asset -- no footprint/alignment",
+      "role": "material",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_GroundTile.T_Room1_GroundTile",
+      "name": "T_Room1_GroundTile",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_LeftStructure.T_Room1_LeftStructure",
+      "name": "T_Room1_LeftStructure",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_LongWalkway.T_Room1_LongWalkway",
+      "name": "T_Room1_LongWalkway",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_LongWalkwayTopdown.T_Room1_LongWalkwayTopdown",
+      "name": "T_Room1_LongWalkwayTopdown",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_RightStructure.T_Room1_RightStructure",
+      "name": "T_Room1_RightStructure",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1289,
+        "height": 1220
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_StoneTileEdge.T_Room1_StoneTileEdge",
+      "name": "T_Room1_StoneTileEdge",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_StoneTileMossy.T_Room1_StoneTileMossy",
+      "name": "T_Room1_StoneTileMossy",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_StoneTileMossy_Cropped.T_Room1_StoneTileMossy_Cropped",
+      "name": "T_Room1_StoneTileMossy_Cropped",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_StoneTileMossy_Mat.T_Room1_StoneTileMossy_Mat",
+      "name": "T_Room1_StoneTileMossy_Mat",
+      "class": "Material",
+      "footprint": null,
+      "alignment": null,
+      "notes": "supporting material asset -- no footprint/alignment",
+      "role": "material",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/T_Room1_WalkwayPlank.T_Room1_WalkwayPlank",
+      "name": "T_Room1_WalkwayPlank",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_left_structure_3d_0727201107_image-to-3d-texture/Materials/room1_left_structure_3d_072720_image-to-3d-texture_material_0.room1_left_structure_3d_072720_image-to-3d-texture_material_0",
+      "name": "room1_left_structure_3d_072720_image-to-3d-texture_material_0",
+      "class": "MaterialInstanceConstant",
+      "footprint": null,
+      "alignment": null,
+      "notes": "supporting material asset -- no footprint/alignment",
+      "role": "material",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_left_structure_3d_0727201107_image-to-3d-texture/StaticMeshes/SM_Room1_LeftStructure.SM_Room1_LeftStructure",
+      "name": "SM_Room1_LeftStructure",
+      "class": "StaticMesh",
+      "footprint": {
+        "width": 189.9687957763672,
+        "depth": 89.98260116577148,
+        "height": 147.5230941772461
+      },
+      "alignment": {
+        "bounds_min": {
+          "x": -95.07989501953125,
+          "y": -45.4093017578125,
+          "z": -73.89219665527344
+        },
+        "bounds_max": {
+          "x": 94.88890075683594,
+          "y": 44.573299407958984,
+          "z": 73.63089752197266
+        }
+      },
+      "notes": null,
+      "role": "scenery_prop",
+      "layer": "midground"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_left_structure_3d_0727201107_image-to-3d-texture/Textures/room1_left_structure_3d_072720_7_image-to-3d-texture_texture_0.room1_left_structure_3d_072720_7_image-to-3d-texture_texture_0",
+      "name": "room1_left_structure_3d_072720_7_image-to-3d-texture_texture_0",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 4096,
+        "height": 4096
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_left_structure_3d_0727201107_image-to-3d-texture/Textures/room1_left_structure_3d_072720_7_image-to-3d-texture_texture_1.room1_left_structure_3d_072720_7_image-to-3d-texture_texture_1",
+      "name": "room1_left_structure_3d_072720_7_image-to-3d-texture_texture_1",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 2048,
+        "height": 2048
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_left_structure_3d_0727201107_image-to-3d-texture/Textures/room1_left_structure_3d_072720_7_image-to-3d-texture_texture_2.room1_left_structure_3d_072720_7_image-to-3d-texture_texture_2",
+      "name": "room1_left_structure_3d_072720_7_image-to-3d-texture_texture_2",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 4096,
+        "height": 4096
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_left_structure_3d_0727201107_image-to-3d-texture/Textures/room1_left_structure_3d_072720_7_image-to-3d-texture_texture_3.room1_left_structure_3d_072720_7_image-to-3d-texture_texture_3",
+      "name": "room1_left_structure_3d_072720_7_image-to-3d-texture_texture_3",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 2048,
+        "height": 2048
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_right_structure_3d_0727204446_image-to-3d-texture/Materials/room1_right_structure_3d_0727_image-to-3d-texture_material_0.room1_right_structure_3d_0727_image-to-3d-texture_material_0",
+      "name": "room1_right_structure_3d_0727_image-to-3d-texture_material_0",
+      "class": "MaterialInstanceConstant",
+      "footprint": null,
+      "alignment": null,
+      "notes": "supporting material asset -- no footprint/alignment",
+      "role": "material",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_right_structure_3d_0727204446_image-to-3d-texture/StaticMeshes/SM_Room1_RightStructure.SM_Room1_RightStructure",
+      "name": "SM_Room1_RightStructure",
+      "class": "StaticMesh",
+      "footprint": {
+        "width": 174.60960388183594,
+        "depth": 142.53619384765625,
+        "height": 189.9499969482422
+      },
+      "alignment": {
+        "bounds_min": {
+          "x": -87.32510375976562,
+          "y": -71.26419830322266,
+          "z": -95.06800079345703
+        },
+        "bounds_max": {
+          "x": 87.28450012207031,
+          "y": 71.2719955444336,
+          "z": 94.88199615478516
+        }
+      },
+      "notes": null,
+      "role": "scenery_prop",
+      "layer": "midground"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_right_structure_3d_0727204446_image-to-3d-texture/Textures/room1_right_structure_3d_07272__image-to-3d-texture_texture_0.room1_right_structure_3d_07272__image-to-3d-texture_texture_0",
+      "name": "room1_right_structure_3d_07272__image-to-3d-texture_texture_0",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_right_structure_3d_0727204446_image-to-3d-texture/Textures/room1_right_structure_3d_07272__image-to-3d-texture_texture_1.room1_right_structure_3d_07272__image-to-3d-texture_texture_1",
+      "name": "room1_right_structure_3d_07272__image-to-3d-texture_texture_1",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_right_structure_3d_0727204446_image-to-3d-texture/Textures/room1_right_structure_3d_07272__image-to-3d-texture_texture_2.room1_right_structure_3d_07272__image-to-3d-texture_texture_2",
+      "name": "room1_right_structure_3d_07272__image-to-3d-texture_texture_2",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Room1/room1_right_structure_3d_0727204446_image-to-3d-texture/Textures/room1_right_structure_3d_07272__image-to-3d-texture_texture_3.room1_right_structure_3d_07272__image-to-3d-texture_texture_3",
+      "name": "room1_right_structure_3d_07272__image-to-3d-texture_texture_3",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 32,
+        "height": 32
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    }
+  ]
+}

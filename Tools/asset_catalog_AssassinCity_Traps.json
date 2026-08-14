@@ -1,0 +1,603 @@
+{
+  "biome": "AssassinCity_Traps",
+  "source_folder": "/Game/Environments/CityBiome/Traps",
+  "asset_count": 40,
+  "role_counts": {
+    "hazard": 36,
+    "texture_source": 4
+  },
+  "assets": [
+    {
+      "path": "/Game/Environments/CityBiome/Traps/FB_Trap_Electric.FB_Trap_Electric",
+      "name": "FB_Trap_Electric",
+      "class": "PaperFlipbook",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "per_frame": "see the flipbook's own sprites for per-frame pivot -- not duplicated here"
+      },
+      "notes": "frame_count=8 fps=10.0",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/FB_Trap_Saw.FB_Trap_Saw",
+      "name": "FB_Trap_Saw",
+      "class": "PaperFlipbook",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "per_frame": "see the flipbook's own sprites for per-frame pivot -- not duplicated here"
+      },
+      "notes": "frame_count=8 fps=10.0",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/FB_Trap_SpikeColumn.FB_Trap_SpikeColumn",
+      "name": "FB_Trap_SpikeColumn",
+      "class": "PaperFlipbook",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "per_frame": "see the flipbook's own sprites for per-frame pivot -- not duplicated here"
+      },
+      "notes": "frame_count=8 fps=1.0",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/FB_Trap_SpikeFloor.FB_Trap_SpikeFloor",
+      "name": "FB_Trap_SpikeFloor",
+      "class": "PaperFlipbook",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "per_frame": "see the flipbook's own sprites for per-frame pivot -- not duplicated here"
+      },
+      "notes": "frame_count=8 fps=10.0",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_01.SP_Trap_Electric_01",
+      "name": "SP_Trap_Electric_01",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_02.SP_Trap_Electric_02",
+      "name": "SP_Trap_Electric_02",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_03.SP_Trap_Electric_03",
+      "name": "SP_Trap_Electric_03",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_04.SP_Trap_Electric_04",
+      "name": "SP_Trap_Electric_04",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_05.SP_Trap_Electric_05",
+      "name": "SP_Trap_Electric_05",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_06.SP_Trap_Electric_06",
+      "name": "SP_Trap_Electric_06",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_07.SP_Trap_Electric_07",
+      "name": "SP_Trap_Electric_07",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Electric_08.SP_Trap_Electric_08",
+      "name": "SP_Trap_Electric_08",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_01.SP_Trap_Saw_01",
+      "name": "SP_Trap_Saw_01",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_02.SP_Trap_Saw_02",
+      "name": "SP_Trap_Saw_02",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_03.SP_Trap_Saw_03",
+      "name": "SP_Trap_Saw_03",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_04.SP_Trap_Saw_04",
+      "name": "SP_Trap_Saw_04",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_05.SP_Trap_Saw_05",
+      "name": "SP_Trap_Saw_05",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_06.SP_Trap_Saw_06",
+      "name": "SP_Trap_Saw_06",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_07.SP_Trap_Saw_07",
+      "name": "SP_Trap_Saw_07",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_Saw_08.SP_Trap_Saw_08",
+      "name": "SP_Trap_Saw_08",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_01.SP_Trap_SpikeColumn_01",
+      "name": "SP_Trap_SpikeColumn_01",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_02.SP_Trap_SpikeColumn_02",
+      "name": "SP_Trap_SpikeColumn_02",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_03.SP_Trap_SpikeColumn_03",
+      "name": "SP_Trap_SpikeColumn_03",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_04.SP_Trap_SpikeColumn_04",
+      "name": "SP_Trap_SpikeColumn_04",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_05.SP_Trap_SpikeColumn_05",
+      "name": "SP_Trap_SpikeColumn_05",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_06.SP_Trap_SpikeColumn_06",
+      "name": "SP_Trap_SpikeColumn_06",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_07.SP_Trap_SpikeColumn_07",
+      "name": "SP_Trap_SpikeColumn_07",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeColumn_08.SP_Trap_SpikeColumn_08",
+      "name": "SP_Trap_SpikeColumn_08",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 384.0,
+        "height": 512.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_01.SP_Trap_SpikeFloor_01",
+      "name": "SP_Trap_SpikeFloor_01",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_02.SP_Trap_SpikeFloor_02",
+      "name": "SP_Trap_SpikeFloor_02",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_03.SP_Trap_SpikeFloor_03",
+      "name": "SP_Trap_SpikeFloor_03",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_04.SP_Trap_SpikeFloor_04",
+      "name": "SP_Trap_SpikeFloor_04",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_05.SP_Trap_SpikeFloor_05",
+      "name": "SP_Trap_SpikeFloor_05",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_06.SP_Trap_SpikeFloor_06",
+      "name": "SP_Trap_SpikeFloor_06",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_07.SP_Trap_SpikeFloor_07",
+      "name": "SP_Trap_SpikeFloor_07",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/SP_Trap_SpikeFloor_08.SP_Trap_SpikeFloor_08",
+      "name": "SP_Trap_SpikeFloor_08",
+      "class": "PaperSprite",
+      "footprint": {
+        "width": 768.0,
+        "height": 256.0
+      },
+      "alignment": {
+        "pivot_mode": "<SpritePivotMode.CUSTOM: 9>"
+      },
+      "notes": "has_default_material=True",
+      "role": "hazard",
+      "layer": "gameplay_plane"
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/T_Trap_Electric.T_Trap_Electric",
+      "name": "T_Trap_Electric",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/T_Trap_Saw.T_Trap_Saw",
+      "name": "T_Trap_Saw",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/T_Trap_SpikeColumn.T_Trap_SpikeColumn",
+      "name": "T_Trap_SpikeColumn",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    },
+    {
+      "path": "/Game/Environments/CityBiome/Traps/T_Trap_SpikeFloor.T_Trap_SpikeFloor",
+      "name": "T_Trap_SpikeFloor",
+      "class": "Texture2D",
+      "footprint": {
+        "width": 1536,
+        "height": 1024
+      },
+      "alignment": null,
+      "notes": "textures have no placement alignment -- backing asset only",
+      "role": "texture_source",
+      "layer": null
+    }
+  ]
+}

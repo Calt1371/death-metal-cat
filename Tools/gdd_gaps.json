@@ -1,0 +1,270 @@
+{
+  "total_features_considered": 42,
+  "excluded_resolved": 18,
+  "excluded_out_of_scope": 15,
+  "open_candidates_checked_against_codebase": [
+    {
+      "feature": "Room progression framework",
+      "section": "Status: (nested under 2.6)",
+      "stated_status": "built, tested via both branches, and committed",
+      "description": "Room progression framework (branching, one-way gating): built, tested via both branches, and committed. [UPDATED v4]",
+      "evidence": {
+        "keywords": [
+          "progression",
+          "framework"
+        ],
+        "hits": [
+          {
+            "keyword": "progression",
+            "matched_token": "progression",
+            "source": "Source/PythonTest/BiomeEndMarker.cpp (symbol PROGRESSION)"
+          },
+          {
+            "keyword": "framework",
+            "matched_token": "gameframework",
+            "source": "Source/PythonTest/BiomeEndMarker.h (symbol GameFramework)"
+          }
+        ],
+        "matched": true
+      }
+    },
+    {
+      "feature": "Room-to-room exit trigger alignment",
+      "section": "Status: (nested under 2.6)",
+      "stated_status": "Not started (status unconfirmed per GDD text, needs re-verification)",
+      "description": "Known open issue (carried from v2, status unconfirmed \u2014 verify before next milestone): room-to-room exit triggers, originally positioned against the old flat placeholder floors, previously appeared misaligned against real imported geometry. Root cause was under active investigation as of the prior draft; confirm current status before relying on this note. Logged here rather than left silent, per the project's own practice of documenting known gaps rather than presenting untested work as finished.",
+      "evidence": {
+        "keywords": [
+          "exit",
+          "trigger",
+          "alignment"
+        ],
+        "hits": [
+          {
+            "keyword": "exit",
+            "matched_token": "aroomexittrigger",
+            "source": "Source/PythonTest/BiomeEndMarker.h (symbol ARoomExitTrigger)"
+          },
+          {
+            "keyword": "trigger",
+            "matched_token": "triggervolume",
+            "source": "Source/PythonTest/BiomeEndMarker.cpp (symbol TriggerVolume)"
+          },
+          {
+            "keyword": "alignment",
+            "matched_token": "setalignment",
+            "source": "Source/PythonTest/GnarlyRankHUDWidget.cpp (symbol SetAlignment)"
+          }
+        ],
+        "matched": true
+      }
+    },
+    {
+      "feature": "Foundation Extractor",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "[UPDATED v4] Proven \u2014 measurement/spec pipeline hash-verified on Room1/AssassinCity; GDD-ingestion + constants-halt built and verified this pass (commit 432637d)",
+      "description": "Role: Measures a hand-built golden room once per biome: platform/gap spacing and reachability (jump/wall-jump/dodge, live-queried against the character CDO, never hardcoded), plus 2D sprite scale and HSV color-value consistency across placed instances. [UPDATED v4] Also ingests the GDD (Death_Metal_Cat_GDD_v3.docx) once, extracts room roles and the agent roster, and halts before measuring anything if the GDD's documented movement-constant categories don't reconcile with a live-vs-C++-header-default comparison beyond a 1% relative tolerance \u2014 this caught and led to fixing a real 9.1% JumpZVelocity drift between the live-tuned Blueprint and the stale C++ header default.. Input: Golden room level asset, GDD (read once, passed downstream as structured data). Output: biome_spec_<Biome>.json, gdd_reference.json",
+      "evidence": {
+        "keywords": [
+          "foundation",
+          "extractor"
+        ],
+        "hits": [
+          {
+            "keyword": "foundation",
+            "matched_token": "foundation",
+            "source": "Source/PythonTest/DeathMetalCatCharacter.h (symbol Foundation)"
+          },
+          {
+            "keyword": "extractor",
+            "matched_token": "actor",
+            "source": "Source/PythonTest/BiomeEndMarker.h (symbol Actor)"
+          }
+        ],
+        "matched": true
+      }
+    },
+    {
+      "feature": "Room Variation Generator",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "In progress \u2014 6 test room variations generated and since removed as scratch; Room2 and Room3 built manually via the same golden-room asset-reuse method and independently confirmed reachable by Reachability Verifier. Full asset-pool-driven generation pending Asset Cataloger.",
+      "description": "Role: Composes a new room's platforming layout and 2D dressing by drawing on biome_spec.json's measured spacing/reachability rules, rather than a fixed piece vocabulary. Places enemy/pickup spawn markers within the generated geometry.. Input: biome_spec.json, gdd_reference.json, cataloged asset pool (Asset Cataloger, in progress). Output: JSON: ordered piece sequence + spawn marker positions + dressing assignments",
+      "evidence": {
+        "keywords": [
+          "variation",
+          "generator"
+        ],
+        "hits": [
+          {
+            "keyword": "generator",
+            "matched_token": "generator",
+            "source": "Source/PythonTest/GnarlyRankHUDWidget.h (symbol Generator)"
+          }
+        ],
+        "matched": false
+      }
+    },
+    {
+      "feature": "Reachability Verifier",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "[UPDATED v4] Proven \u2014 built, and validated three ways (cross-check against Foundation Extractor's own output on Room1, a synthetic too-wide-gap test, and real runs against Room1/Room2) (commit e64dba1)",
+      "description": "Role: Independently re-checks every gap in a room against biome_spec.json's measured movement constants \u2014 the deterministic (non-LLM) validation pass. compute_gaps() is extracted as a single shared function so Foundation Extractor and Reachability Verifier can never drift out of sync with each other.. Input: Room's live platform actors, biome_spec.json. Output: Pass/fail per gap + flagged issues",
+      "evidence": {
+        "keywords": [
+          "reachability",
+          "verifier"
+        ],
+        "hits": [
+          {
+            "keyword": "reachability",
+            "matched_token": "each",
+            "source": "Source/PythonTest/DeathMetalCatCharacter.h (symbol Each)"
+          },
+          {
+            "keyword": "verifier",
+            "matched_token": "reachabilityverifier",
+            "source": "Tools/reachability_verifier.py"
+          }
+        ],
+        "matched": true
+      }
+    },
+    {
+      "feature": "Stress Tester",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "[UPDATED v4] Proven \u2014 built, reuses compute_gaps() and a newly-extracted compute_derived_movement_constants() as shared math with Foundation Extractor; validated against Room1 (source-room baseline), Room2 (fresh recompute), and Room3 (clean status-gate skip) (commit 187f856)",
+      "description": "Role: Answers two questions Reachability Verifier's binary pass/fail doesn't: whether a room's PASS is still trustworthy if movement constants have drifted since biome_spec.json was generated, and whether a technically-reachable gap is comfortable or needs manual playtest confirmation (tight-margin flag, \u226585% of max range \u2014 the OneWayPlatform11\u219215 lesson: formula-reachable isn't automatically playtest-trustworthy). Gated by Tools/room_status.json (nested per biome, three states: not_started / in_progress / finished) so an unfinished room is cleanly skipped rather than falsely flagged as failing.. Input: Room's live state, biome_spec.json, gdd_reference.json, room_status.json. Output: stress_test_<Room>.json: drift findings + comfortable_pass / tight_pass_needs_playtest / fail per gap",
+      "evidence": {
+        "keywords": [
+          "stress",
+          "tester"
+        ],
+        "hits": [
+          {
+            "keyword": "stress",
+            "matched_token": "stresstestroom",
+            "source": "Tools/stress_test_room.py"
+          },
+          {
+            "keyword": "tester",
+            "matched_token": "test",
+            "source": "Source/PythonTest/DeathMetalCatCharacter.cpp (symbol TEST)"
+          }
+        ],
+        "matched": true
+      }
+    },
+    {
+      "feature": "Asset Cataloger",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "Scoped, not yet built",
+      "description": "Role: Scans a folder of biome assets (beyond the fixed set already measured in Room1) and outputs footprint, alignment, layer, and role data per asset, so the Room Variation Generator can draw freely from a growing asset pool rather than a hand-fixed set.. Input: Asset folder, biome name. Output: asset_catalog_<Biome>.json",
+      "evidence": {
+        "keywords": [
+          "asset",
+          "cataloger"
+        ],
+        "hits": [
+          {
+            "keyword": "asset",
+            "matched_token": "cylindermeshasset",
+            "source": "Source/PythonTest/DeathMetalCatEnemyBase.cpp (symbol CylinderMeshAsset)"
+          }
+        ],
+        "matched": false
+      }
+    },
+    {
+      "feature": "Level & Encounter Designer",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "[CORRECTED v4 \u2014 v2/v3 text was stale, verified against git log] Proven \u2014 built, committed, and verified against all 9 real rooms (commit 553a007, 2026-07-23)",
+      "description": "Role: Given a room's difficulty tier and the spawn markers left in the generated geometry, decides what (if anything) populates each marker \u2014 enemy type or pickup type \u2014 driving an escalating difficulty curve across the run.. Input: Difficulty tier + room's marker list. Output: JSON: per-marker population decision",
+      "evidence": {
+        "keywords": [
+          "encounter",
+          "designer"
+        ],
+        "hits": [
+          {
+            "keyword": "encounter",
+            "matched_token": "encounterspawnmarker",
+            "source": "Source/PythonTest/EncounterSpawnMarker.h"
+          },
+          {
+            "keyword": "designer",
+            "matched_token": "sign",
+            "source": "Source/PythonTest/DeathMetalCatCharacter.cpp (symbol Sign)"
+          }
+        ],
+        "matched": true
+      }
+    },
+    {
+      "feature": "Balance/QA Reviewer",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "[CORRECTED v4 \u2014 v2/v3 text was stale, verified against git log] Committed (commit 947e7fd, 2026-08-03) \u2014 draft implementation exists and is committed; verification against real Level & Encounter Designer output not yet re-confirmed",
+      "description": "Role: Reads level/encounter output and flags risk spikes or scaling issues.. Input: Encounter JSON, attribute progression curve. Output: Flagged issues + rationale",
+      "evidence": {
+        "keywords": [
+          "balance",
+          "reviewer"
+        ],
+        "hits": [
+          {
+            "keyword": "balance",
+            "matched_token": "balanceqareviewer",
+            "source": "Tools/balance_qa_reviewer.py"
+          },
+          {
+            "keyword": "reviewer",
+            "matched_token": "balanceqareviewer",
+            "source": "Tools/balance_qa_reviewer.py"
+          }
+        ],
+        "matched": true
+      }
+    }
+  ],
+  "gaps": [
+    {
+      "feature": "Room Variation Generator",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "In progress \u2014 6 test room variations generated and since removed as scratch; Room2 and Room3 built manually via the same golden-room asset-reuse method and independently confirmed reachable by Reachability Verifier. Full asset-pool-driven generation pending Asset Cataloger.",
+      "description": "Role: Composes a new room's platforming layout and 2D dressing by drawing on biome_spec.json's measured spacing/reachability rules, rather than a fixed piece vocabulary. Places enemy/pickup spawn markers within the generated geometry.. Input: biome_spec.json, gdd_reference.json, cataloged asset pool (Asset Cataloger, in progress). Output: JSON: ordered piece sequence + spawn marker positions + dressing assignments",
+      "evidence": {
+        "keywords": [
+          "variation",
+          "generator"
+        ],
+        "hits": [
+          {
+            "keyword": "generator",
+            "matched_token": "generator",
+            "source": "Source/PythonTest/GnarlyRankHUDWidget.h (symbol Generator)"
+          }
+        ],
+        "matched": false
+      }
+    },
+    {
+      "feature": "Asset Cataloger",
+      "section": "4.2 Agent Roster \u2014 Technical Detail (Pillar 1 \u2014 AI Dev Pipeline)",
+      "stated_status": "Scoped, not yet built",
+      "description": "Role: Scans a folder of biome assets (beyond the fixed set already measured in Room1) and outputs footprint, alignment, layer, and role data per asset, so the Room Variation Generator can draw freely from a growing asset pool rather than a hand-fixed set.. Input: Asset folder, biome name. Output: asset_catalog_<Biome>.json",
+      "evidence": {
+        "keywords": [
+          "asset",
+          "cataloger"
+        ],
+        "hits": [
+          {
+            "keyword": "asset",
+            "matched_token": "cylindermeshasset",
+            "source": "Source/PythonTest/DeathMetalCatEnemyBase.cpp (symbol CylinderMeshAsset)"
+          }
+        ],
+        "matched": false
+      }
+    }
+  ]
+}

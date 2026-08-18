@@ -550,7 +550,15 @@ def try_llm_reasoning(gap: dict, scores: dict, other_gaps_summary: str) -> tuple
         )
         text = next(block.text for block in response.content if block.type == "text")
         return text.strip(), "llm"
-    except AnthropicError as exc:
+    except (AnthropicError, TypeError) as exc:
+        # TypeError, not just AnthropicError, is deliberate: this SDK version's Anthropic()
+        # constructor does NOT validate that a key is resolvable at construction time -- a
+        # missing ANTHROPIC_API_KEY only surfaces here, at the actual request, as a bare
+        # TypeError from _validate_headers ("Could not resolve authentication method..."),
+        # confirmed by actually running this path with no key configured. The earlier
+        # `except AnthropicError` around `Anthropic()` above never fires for that case; without
+        # this broader except here too, a missing key crashes the whole run instead of falling
+        # back.
         return deterministic_reasoning(gap, scores), f"deterministic_fallback (API call failed: {exc})"
 
 

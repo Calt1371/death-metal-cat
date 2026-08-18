@@ -1,5 +1,49 @@
 # Assignment 5 -- GDD Gap Agent
 
+**Quick answers (see the linked section for the full reasoning):**
+- **What features did the agent build?** `Tools/asset_cataloger.py` -- an implementation of the
+  GDD's Asset Cataloger agent (Section 4.2, "Scoped, not yet built"). See
+  [Step 5](#step-5-what-was-generated-and-its-honest-state).
+- **Why did it select that feature?** Of the 2 real gaps detected, Asset Cataloger has zero unmet
+  dependencies, while Room Variation Generator is explicitly blocked on Asset Cataloger per the
+  GDD's own stated Input field -- a conclusion only reached after fixing a real direction-blind
+  bug in the dependency scorer. See
+  [Step 4](#step-4-prioritization----and-a-real-disagreement-with-my-own-first-draft-formula).
+- **Were you able to run it in your game?** Yes -- both `gdd_gap_agent.py` and
+  `asset_cataloger.py` were run live against the real, open UE5 editor and real project content
+  (81 real assets across two folders), not simulated or mocked. See
+  [Step 5](#step-5-what-was-generated-and-its-honest-state).
+
+## How to Run
+
+**Install (once):** `pip install python-docx anthropic` -- `python-docx` is needed just to
+import `chunk_gdd_by_heading()` from `quip_generator.py`; `anthropic` is needed to import that
+same module at all (it imports the `anthropic` package at the top of the file), even though the
+default deterministic path never calls the API.
+
+```
+# Steps 1-4: parse the GDD, scan the codebase, detect gaps, prioritize them
+python Tools/gdd_gap_agent.py
+
+# Same, but attempt one Claude API call per gap to write its prose justification
+# (falls back to a deterministic template if the call fails for any reason, e.g. no key)
+python Tools/gdd_gap_agent.py --use-llm
+
+# Step 5: catalog a real asset folder (requires UE5 open with Python Remote Execution enabled,
+# same as every other Tools/ agent in this project)
+python Tools/asset_cataloger.py --folder /Game/Environments/CityBiome/Traps --biome AssassinCity
+```
+
+**`ANTHROPIC_API_KEY` is optional, not required.** The default run (no `--use-llm`) never touches
+the Claude API at all -- confirmed by this session's own run, which had no key configured and
+completed Steps 1-4 correctly. `--use-llm` attempts to use a key if one is set, but doesn't
+require it either: while adding this section, running `--use-llm` with no key configured actually
+crashed (a real bug -- this SDK version doesn't validate that a key is resolvable until the actual
+API request, at which point it raises a bare `TypeError` rather than `AnthropicError`, which the
+original `except AnthropicError` didn't catch). Fixed in `try_llm_reasoning()` to also catch
+`TypeError`, and re-verified live: `--use-llm` with no key now falls back to the deterministic
+template and reports why, instead of crashing.
+
 ## What was built, and why it's structured this way
 
 `Tools/gdd_gap_agent.py` is a goal-oriented agent that reads `Docs/Death_Metal_Cat_GDD_v4.docx`,

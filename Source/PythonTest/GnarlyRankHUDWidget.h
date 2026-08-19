@@ -76,6 +76,22 @@ public:
 	/** Immediate, non-animated opacity set -- used to snap RoomFadeImage to a known state rather than animate to it (e.g. forcing fully black with no fade, if ever needed). */
 	void SetRoomFadeOpacity(float Alpha);
 
+	/**
+	 * Shows the full-screen death overlay (dim backdrop + you_died image + "YOU DIED" in blood
+	 * red), Dark-Souls-style: the backdrop eases in first, then -- after a short delay -- the
+	 * image and text ease in together on top of it, arriving visibly after the screen rather than
+	 * everything popping in at once. See UpdateDeathScreenFade for the actual ramp. Push-driven the
+	 * same way as ShowQuip -- called directly by ADeathMetalCatCharacter::HandleDeath the moment
+	 * Health reaches 0.
+	 */
+	void ShowDeathScreen();
+
+	/** Hides the death overlay -- called by ADeathMetalCatCharacter::HandleRespawn right before ResetToStartingRoom kicks off the room-transition fade-out, so it disappears cleanly instead of lingering behind (and briefly showing through during fade-in of) the reset room. */
+	void HideDeathScreen();
+
+	/** True from ShowDeathScreen until UpdateDeathScreenFade's ramps both finish -- ADeathMetalCatCharacter::HandleDeathContinuePressed checks this before allowing a button press to respawn, so mashing a button the instant the player dies can't skip or cut the fade-in short. */
+	bool IsDeathScreenFadeInProgress() const { return bDeathScreenActive; }
+
 private:
 	/**
 	 * Polls the owning character and refreshes whichever sub-elements have actually changed since
@@ -95,8 +111,14 @@ private:
 	/** Per-tick fade timing for RoomFadeImage -- see StartRoomFadeOut/StartRoomFadeIn. No-ops entirely while bRoomFadeActive is false. */
 	void UpdateRoomFade();
 
+	/** Per-tick staged ease-in for the death screen -- see ShowDeathScreen. No-ops entirely while bDeathScreenActive is false; clears that flag itself once both the backdrop and image/text ramps have fully completed. */
+	void UpdateDeathScreenFade();
+
 	/** Applies Alpha as the render opacity of every quip dialogue box element in one call -- QuipPortraitImage is deliberately excluded since it's nested inside QuipPortraitFrame via SetContent, and Slate render opacity already cascades to children. */
 	void SetQuipVisualsOpacity(float Alpha);
+
+	/** Shared visibility toggle for DeathScreenBackdrop/DeathScreenImage/DeathScreenText -- same Collapsed-when-hidden approach as SetQuipVisualsOpacity (a Collapsed widget isn't painted or hit-tested at all), used by both ShowDeathScreen/HideDeathScreen instead of each duplicating the three-element toggle. */
+	void SetDeathScreenVisible(bool bVisible);
 
 	/** Static "GNARLY RANK" logo graphic (T_GnarlyRank_Logo), shown above RankText -- set once in Initialize() and never reassigned, unlike PortraitImage. */
 	UPROPERTY()
@@ -192,4 +214,24 @@ private:
 
 	/** Opacity the current fade animation is ramping TOWARD -- 1.0 for a fade-out (to black), 0.0 for a fade-in (back to the scene). */
 	float RoomFadeTargetOpacity = 0.f;
+
+	// -- Death screen --
+
+	/** Full-screen dark dim behind DeathScreenImage/DeathScreenText, so both stay legible over whatever's on screen at the moment of death -- same flat-solid-color construction as LowHealthTintImage/RoomFadeImage, just a fixed (non-animated) opacity rather than one driven by Health or a fade ramp. Added LAST in Initialize(), after even RoomFadeImage, so the death screen paints on top of the room-transition fade too. */
+	UPROPERTY()
+	TObjectPtr<UImage> DeathScreenBackdrop;
+
+	/** you_died_death_metal_cat.png, imported as /Game/UI/DeathScreen/T_YouDied -- see AgentScripts/ue_import_death_screen.py. Centered, above DeathScreenText. */
+	UPROPERTY()
+	TObjectPtr<UImage> DeathScreenImage;
+
+	/** "YOU DIED" in blood red, centered below DeathScreenImage. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> DeathScreenText;
+
+	/** True from ShowDeathScreen until UpdateDeathScreenFade's ramps both finish; UpdateDeathScreenFade no-ops entirely while false. Cleared early (without finishing the ramp) by HideDeathScreen if death is interrupted by a respawn before the fade-in completes. */
+	bool bDeathScreenActive = false;
+
+	/** GetWorld()->GetTimeSeconds() at the moment the most recent ShowDeathScreen call fired -- both the backdrop and image/text ramps below measure their own elapsed time from this same instant, just with the image/text ramp additionally offset by DeathContentFadeInDelay. */
+	float DeathScreenShowStartTime = 0.f;
 };

@@ -35,6 +35,29 @@ namespace
 	// Cayde's dialogue portrait, imported by AgentScripts/ue_import_cayde_portrait.py.
 	const TCHAR* CaydePortraitPath = TEXT("/Game/UI/CaydeDialogue/T_CaydeDialoguePortrait.T_CaydeDialoguePortrait");
 
+	// you_died_death_metal_cat.png, imported by AgentScripts/ue_import_death_screen.py.
+	const TCHAR* YouDiedTexturePath = TEXT("/Game/UI/DeathScreen/T_YouDied.T_YouDied");
+
+	// Blood red for the "YOU DIED" text -- deliberately dark/desaturated rather than a bright pure
+	// red, so it reads as "blood" rather than a UI-warning red (same reasoning as the low-health
+	// tint's dark red base color above it).
+	const FLinearColor BloodRed(0.55f, 0.02f, 0.02f, 1.f);
+
+	// Dark-Souls-style staged death-screen fade-in: the backdrop eases in on its own from t=0;
+	// the image and text are held at zero opacity for DeathContentFadeInDelay before easing in
+	// TOGETHER over their own duration, so they visibly arrive after the backdrop rather than
+	// everything popping in at once. DeathScreenBackdrop's own brush color already bakes in its
+	// max 0.75 alpha (see Initialize()), so ramping RenderOpacity 0->1 here naturally tops out at
+	// that dim rather than going fully opaque.
+	constexpr float DeathBackdropFadeInDuration = 1.75f;
+	constexpr float DeathContentFadeInDelay = 0.5f;
+	constexpr float DeathContentFadeInDuration = 1.75f;
+
+	// Exponent for FMath::InterpEaseInOut -- 2.0 is a standard smooth ease (accelerate out of 0,
+	// decelerate into 1), used instead of a linear lerp specifically so the fade reads as smooth
+	// rather than mechanical.
+	constexpr float DeathFadeEaseExp = 2.f;
+
 	// How long (seconds) the quip dialogue box takes to fade out once QuipDisplayDuration has
 	// elapsed -- a widget-visual-styling constant like the font sizes/positions above, not a
 	// gameplay tunable, so it lives here rather than as a UPROPERTY (this widget has no Blueprint
@@ -335,6 +358,71 @@ bool UGnarlyRankHUDWidget::Initialize()
 			FadeSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
 			FadeSlot->SetOffsets(FMargin(0.f));
 		}
+
+		// Death screen: added LAST, after even RoomFadeImage, so "YOU DIED" always paints on top of
+		// everything else on this HUD -- including the room-transition fade -- rather than being
+		// obscured by it. Same reasoning as why RoomFadeImage itself was added after everything else
+		// above it. Hidden by default (SetDeathScreenVisible(false) below); shown/hidden via the
+		// push-driven ShowDeathScreen/HideDeathScreen, called by
+		// ADeathMetalCatCharacter::HandleDeath/HandleRespawn.
+		DeathScreenBackdrop = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("DeathScreenBackdrop"));
+		if (UTexture2D* WhiteTextureForDeathScreen = LoadObject<UTexture2D>(nullptr, WhiteSquarePath))
+		{
+			DeathScreenBackdrop->SetBrushFromTexture(WhiteTextureForDeathScreen);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[DEATH SCREEN] Failed to load backdrop texture: %s"), WhiteSquarePath);
+		}
+		DeathScreenBackdrop->SetColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.75f));
+
+		if (UCanvasPanelSlot* DeathBackdropSlot = RootCanvas->AddChildToCanvas(DeathScreenBackdrop))
+		{
+			DeathBackdropSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+			DeathBackdropSlot->SetOffsets(FMargin(0.f));
+		}
+
+		// Centered, offset up to leave room for DeathScreenText below it -- UImage's default Stretch
+		// (ScaleToFit) preserves the source PNG's own aspect ratio inside this fixed box, same as
+		// LogoImage above.
+		DeathScreenImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("DeathScreenImage"));
+		if (UTexture2D* YouDiedTexture = LoadObject<UTexture2D>(nullptr, YouDiedTexturePath))
+		{
+			DeathScreenImage->SetBrushFromTexture(YouDiedTexture);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[DEATH SCREEN] Failed to load you_died texture: %s"), YouDiedTexturePath);
+		}
+
+		if (UCanvasPanelSlot* DeathImageSlot = RootCanvas->AddChildToCanvas(DeathScreenImage))
+		{
+			DeathImageSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+			DeathImageSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+			DeathImageSlot->SetPosition(FVector2D(0.f, -60.f));
+			DeathImageSlot->SetSize(FVector2D(420.f, 420.f));
+			DeathImageSlot->SetAutoSize(false);
+		}
+
+		// "YOU DIED" in blood red, centered below the image.
+		DeathScreenText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("DeathScreenText"));
+		DeathScreenText->SetText(FText::FromString(TEXT("YOU DIED")));
+		FSlateFontInfo DeathFont = DeathScreenText->GetFont();
+		DeathFont.Size = 64;
+		DeathScreenText->SetFont(DeathFont);
+		DeathScreenText->SetColorAndOpacity(FSlateColor(BloodRed));
+
+		if (UCanvasPanelSlot* DeathTextSlot = RootCanvas->AddChildToCanvas(DeathScreenText))
+		{
+			DeathTextSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+			DeathTextSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+			DeathTextSlot->SetPosition(FVector2D(0.f, 180.f));
+			DeathTextSlot->SetAutoSize(true);
+		}
+
+		// Hidden until the first ShowDeathScreen call -- the player hasn't died yet at HUD
+		// construction time (same reasoning as SetQuipVisualsOpacity(0.f) above).
+		SetDeathScreenVisible(false);
 	}
 
 	RefreshDisplay();
@@ -353,6 +441,7 @@ void UGnarlyRankHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 	RefreshDisplay();
 	UpdateQuipFade();
 	UpdateRoomFade();
+	UpdateDeathScreenFade();
 }
 
 void UGnarlyRankHUDWidget::ShowQuip(const FString& Line, float DisplayDuration)
@@ -422,6 +511,96 @@ void UGnarlyRankHUDWidget::SetQuipVisualsOpacity(float Alpha)
 	{
 		QuipLineText->SetRenderOpacity(Alpha);
 		QuipLineText->SetVisibility(NewQuipVisibility);
+	}
+}
+
+void UGnarlyRankHUDWidget::ShowDeathScreen()
+{
+	if (!DeathScreenBackdrop || !DeathScreenImage || !DeathScreenText)
+	{
+		return;
+	}
+
+	bDeathScreenActive = true;
+	DeathScreenShowStartTime = GetWorld()->GetTimeSeconds();
+
+	// Visible (so the opacity ramp below is actually painted) but starting fully transparent --
+	// UpdateDeathScreenFade eases these up from here every tick, rather than snapping straight to
+	// visible the way the old immediate-toggle version did.
+	DeathScreenBackdrop->SetVisibility(ESlateVisibility::HitTestInvisible);
+	DeathScreenImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+	DeathScreenText->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+	DeathScreenBackdrop->SetRenderOpacity(0.f);
+	DeathScreenImage->SetRenderOpacity(0.f);
+	DeathScreenText->SetRenderOpacity(0.f);
+}
+
+void UGnarlyRankHUDWidget::HideDeathScreen()
+{
+	// Stops the fade-in ramp immediately if HideDeathScreen fires before it's finished (e.g. an
+	// unusually short RespawnDelay) -- UpdateDeathScreenFade no-ops the instant this is false.
+	bDeathScreenActive = false;
+	SetDeathScreenVisible(false);
+}
+
+void UGnarlyRankHUDWidget::SetDeathScreenVisible(bool bVisible)
+{
+	// Collapsed rather than just zero opacity while hidden -- same reasoning as
+	// SetQuipVisualsOpacity: a Collapsed widget isn't painted or hit-tested at all, so there's
+	// nothing left over once hidden. No fade on the way out (unlike the quip box) -- death is
+	// meant to read as an abrupt stop when it's dismissed, only the way IN is staged/eased.
+	const ESlateVisibility NewVisibility = bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+
+	if (DeathScreenBackdrop)
+	{
+		DeathScreenBackdrop->SetVisibility(NewVisibility);
+	}
+	if (DeathScreenImage)
+	{
+		DeathScreenImage->SetVisibility(NewVisibility);
+	}
+	if (DeathScreenText)
+	{
+		DeathScreenText->SetVisibility(NewVisibility);
+	}
+}
+
+void UGnarlyRankHUDWidget::UpdateDeathScreenFade()
+{
+	if (!bDeathScreenActive)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - DeathScreenShowStartTime;
+
+	// Backdrop: eases in from t=0 on its own timeline.
+	const float BackdropAlpha = FMath::Clamp(Elapsed / DeathBackdropFadeInDuration, 0.f, 1.f);
+	if (DeathScreenBackdrop)
+	{
+		DeathScreenBackdrop->SetRenderOpacity(FMath::InterpEaseInOut(0.f, 1.f, BackdropAlpha, DeathFadeEaseExp));
+	}
+
+	// Image + text: held at 0 until DeathContentFadeInDelay has elapsed (FMath::Clamp floors the
+	// ratio at 0 for the negative elapsed time before then), then ease in together over their own
+	// duration -- both driven by this one ContentAlpha so they arrive in lockstep with each other,
+	// just visibly after the backdrop.
+	const float ContentAlpha = FMath::Clamp((Elapsed - DeathContentFadeInDelay) / DeathContentFadeInDuration, 0.f, 1.f);
+	const float ContentOpacity = FMath::InterpEaseInOut(0.f, 1.f, ContentAlpha, DeathFadeEaseExp);
+	if (DeathScreenImage)
+	{
+		DeathScreenImage->SetRenderOpacity(ContentOpacity);
+	}
+	if (DeathScreenText)
+	{
+		DeathScreenText->SetRenderOpacity(ContentOpacity);
+	}
+
+	// Both ramps fully complete -- nothing left to animate until the next ShowDeathScreen call.
+	if (BackdropAlpha >= 1.f && ContentAlpha >= 1.f)
+	{
+		bDeathScreenActive = false;
 	}
 }
 

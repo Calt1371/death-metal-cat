@@ -8,6 +8,7 @@
 #include "Camera/CameraComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Components/InputComponent.h"
 #include "InputActionValue.h"
 #include "TimerManager.h"
 #include "Components/BoxComponent.h"
@@ -483,11 +484,55 @@ void ADeathMetalCatCharacter::HandleDeath()
 	// Hurt pose TakeDamage already started above, which reads fine as a placeholder death beat.
 	DisableInput(Cast<APlayerController>(GetController()));
 
-	GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ADeathMetalCatCharacter::HandleRespawn, RespawnDelay, false);
+	if (GnarlyRankHUDWidgetInstance)
+	{
+		GnarlyRankHUDWidgetInstance->ShowDeathScreen();
+	}
+
+	// No more auto-respawn timer -- push a separate InputComponent (bound only to EKeys::AnyKey)
+	// onto the player controller's own input stack instead, so any button press advances past the
+	// death screen. This is deliberately a SEPARATE component from PlayerInputComponent, which
+	// DisableInput above just blocked -- PushInputComponent bypasses that block entirely, and
+	// binding here rather than on the normal gameplay InputComponent means there's no risk of this
+	// listener also re-enabling movement/combat input early. HandleDeathContinuePressed itself
+	// gates on the death-screen fade-in having actually finished before calling HandleRespawn.
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		DeathContinueInputComponent = NewObject<UInputComponent>(this, TEXT("DeathContinueInputComponent"));
+		DeathContinueInputComponent->RegisterComponent();
+		DeathContinueInputComponent->BindKey(EKeys::AnyKey, IE_Pressed, this, &ADeathMetalCatCharacter::HandleDeathContinuePressed);
+		PC->PushInputComponent(DeathContinueInputComponent);
+	}
+}
+
+void ADeathMetalCatCharacter::HandleDeathContinuePressed()
+{
+	// Ignores the press entirely while the death-screen fade-in is still playing (both the
+	// backdrop and image/text ramps -- see UGnarlyRankHUDWidget::UpdateDeathScreenFade), so
+	// mashing a button the instant Health hits 0 can't skip or cut the animation short. Once the
+	// fade has fully finished, the next press is what actually respawns.
+	if (GnarlyRankHUDWidgetInstance && GnarlyRankHUDWidgetInstance->IsDeathScreenFadeInProgress())
+	{
+		return;
+	}
+
+	HandleRespawn();
 }
 
 void ADeathMetalCatCharacter::HandleRespawn()
 {
+	// Pop and destroy the continue-listener now that it's done its job -- it must not keep
+	// listening (or keep existing at all) once the player has actually respawned.
+	if (DeathContinueInputComponent)
+	{
+		if (APlayerController* PC = Cast<APlayerController>(GetController()))
+		{
+			PC->PopInputComponent(DeathContinueInputComponent);
+		}
+		DeathContinueInputComponent->DestroyComponent();
+		DeathContinueInputComponent = nullptr;
+	}
+
 	// No SetActorTransform here anymore -- the teleport now happens inside
 	// ARoomProgressionManager::BeginRoomTransition (called via ResetToStartingRoom below), timed
 	// to land during the fade's black pause rather than instantly/visibly right now. This also
@@ -502,6 +547,14 @@ void ADeathMetalCatCharacter::HandleRespawn()
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->StopMovementImmediately();
+	}
+
+	// Hidden here, before the room-transition fade-out even starts ramping below -- so "YOU DIED"
+	// disappears cleanly rather than lingering (Collapsed widgets don't fade) behind the black pause
+	// and then briefly showing through the reset room once BeginRoomTransition's fade-in completes.
+	if (GnarlyRankHUDWidgetInstance)
+	{
+		GnarlyRankHUDWidgetInstance->HideDeathScreen();
 	}
 
 	// Death fully restarts the biome run, not just the player's own position -- rooms deactivate

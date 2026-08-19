@@ -17,6 +17,7 @@ class UPrimitiveComponent;
 class ADamageNumberActor;
 class UGnarlyRankHUDWidget;
 class UDataTable;
+class UInputComponent;
 struct FInputActionValue;
 struct FHitResult;
 
@@ -221,18 +222,30 @@ protected:
 	/**
 	 * Called once, from TakeDamage, the moment Health reaches 0 (GnarlyRank has already been reset
 	 * by that same TakeDamage call, same as any other landed hit -- see ResetGnarlyRank). Logs
-	 * "PLAYER DIED", disables input, and arms the respawn timer -- mirrors
-	 * ADeathMetalCatEnemyBase::HandleDeath, minus the hide/disable-collision step (the player stays
-	 * visible, playing out the Hurt pose TakeDamage already started).
+	 * "PLAYER DIED", disables input, shows the death screen, and pushes DeathContinueInputComponent
+	 * so a button press can advance past it -- mirrors ADeathMetalCatEnemyBase::HandleDeath, minus
+	 * the hide/disable-collision step (the player stays visible, playing out the Hurt pose
+	 * TakeDamage already started). No more timer-driven auto-respawn -- see HandleRespawn.
 	 */
 	void HandleDeath();
 
 	/**
-	 * Timer callback from HandleDeath: resets Health to MaxHealth, clears bIsDead, and starts a
-	 * brief post-respawn invincibility window (see PostRespawnInvulnDuration) by reusing the exact
-	 * same bIsInvincible/IFrameTimerHandle/ClearInvincibility mechanism Dodge's i-frames use, so
+	 * Bound to DeathContinueInputComponent's EKeys::AnyKey binding -- see HandleDeath. Ignores the
+	 * press entirely while GnarlyRankHUDWidgetInstance still reports the death-screen fade-in in
+	 * progress (so mashing a button the instant Health hits 0 can't skip/cut the animation short);
+	 * once the fade has fully finished, the next press calls HandleRespawn.
+	 */
+	void HandleDeathContinuePressed();
+
+	/**
+	 * Called from HandleDeathContinuePressed once the death-screen fade-in has finished and the
+	 * player has pressed a button to continue (previously a fixed-delay timer callback -- now
+	 * purely input-driven, no auto-advance). Pops/destroys DeathContinueInputComponent, hides the
+	 * death screen, resets Health to MaxHealth, clears bIsDead, and starts a brief post-respawn
+	 * invincibility window (see PostRespawnInvulnDuration) by reusing the exact same
+	 * bIsInvincible/IFrameTimerHandle/ClearInvincibility mechanism Dodge's i-frames use, so
 	 * respawning doesn't immediately re-die standing in the same spot. Does NOT teleport the
-	 * character or re-enable input directly anymore -- those now happen inside
+	 * character or re-enable input directly -- those happen inside
 	 * ARoomProgressionManager::BeginRoomTransition (teleport during the black pause, input
 	 * re-enabled at fade-in-complete), triggered here via ResetToStartingRoom(), so the death
 	 * restart gets the same fade-to-black treatment as every other room change. InitialSpawnTransform
@@ -562,10 +575,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0", ClampMax = "1"))
 	float LowHealthTintMaxOpacity = 0.5f;
 
-	/** How long (seconds) the player stays dead (input disabled) before auto-respawning at InitialSpawnTransform -- mirrors ADeathMetalCatEnemyBase::RespawnDelay. Placeholder value, tune freely. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
-	float RespawnDelay = 1.5f;
-
 	/** How long (seconds) CanTakeDamage() stays false right after respawning -- reuses Dodge's own i-frame mechanism (bIsInvincible/IFrameTimerHandle), just armed for this duration instead of IFrameDuration, so respawning doesn't immediately re-die standing in the same spot. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float PostRespawnInvulnDuration = 1.0f;
@@ -846,9 +855,17 @@ private:
 	/** True once Health reaches 0; TakeDamage uses this to only log "PLAYER DIED" / call HandleDeath once. Cleared by HandleRespawn. */
 	bool bIsDead = false;
 
-	FTimerHandle RespawnTimerHandle;
+	/**
+	 * Separate InputComponent pushed onto the player controller's own input stack in HandleDeath,
+	 * bound only to EKeys::AnyKey -- deliberately NOT bound on this character's normal
+	 * InputComponent (the one DisableInput blocks in HandleDeath), so listening for the continue
+	 * press can never accidentally re-enable movement/combat input early. Popped and destroyed in
+	 * HandleRespawn.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UInputComponent> DeathContinueInputComponent = nullptr;
 
-	/** Actor transform cached in BeginPlay -- where HandleRespawn puts the character back after RespawnDelay. Mirrors ADeathMetalCatEnemyBase::InitialSpawnTransform. */
+	/** Actor transform cached in BeginPlay -- where HandleRespawn puts the character back on death. Mirrors ADeathMetalCatEnemyBase::InitialSpawnTransform. */
 	FTransform InitialSpawnTransform;
 
 	FTimerHandle DodgeTimerHandle;

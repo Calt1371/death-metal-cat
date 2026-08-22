@@ -150,6 +150,24 @@ private:
 	UPROPERTY()
 	TObjectPtr<UTextBlock> HealthText;
 
+	/** Rage fill bar, directly below HealthBar. Percent is polled/set in RefreshDisplay same as Health; fill COLOR is instead hue-cycled every tick in UpdateRageBarVisuals regardless of fill amount ("rainbow-colored... not a static color" -- unlike Health's fixed color-by-percent lerp). */
+	UPROPERTY()
+	TObjectPtr<UProgressBar> RageBar;
+
+	/** Static "RAGE" word label alongside RageBar -- unlike Health (which has no word label, just the numeric readout), Rage was explicitly asked to be labeled. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> RageLabelText;
+
+	/** Accumulates every tick (NativeTick's InDeltaTime) -- drives both the hue-cycle and the full-bar pulsate/shake sine waves in UpdateRageBarVisuals. */
+	float RageAnimTime = 0.f;
+
+	/** Per-tick hue-cycle for RageBar's fill color, plus a small scale-pulse + positional jitter on the whole widget while OwningCharacter->IsRageFull() -- see class doc. Runs every tick regardless of whether Rage/RageMax actually changed (unlike RefreshDisplay's change-gated polling), since the hue must keep advancing even while the numeric value sits still at 0 or at max. */
+	void UpdateRageBarVisuals(float DeltaTime);
+
+	/** Shared gate for RageBar's percent -- polled the same change-gated way as HealthBar/HealthText above. */
+	float LastSeenRage = -1.f;
+	float LastSeenRageMax = -1.f;
+
 	UPROPERTY()
 	TObjectPtr<ADeathMetalCatCharacter> OwningCharacter;
 

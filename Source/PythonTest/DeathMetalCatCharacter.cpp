@@ -24,6 +24,10 @@
 #include "QuipLibrary.h"
 #include "RoomProgressionManager.h"
 #include "DeathMetalCatEnemyBase.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -203,6 +207,11 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 		{
 			EnhancedInput->BindAction(InvulnDashAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleInvulnDash);
 		}
+
+		if (RageActivateAction)
+		{
+			EnhancedInput->BindAction(RageActivateAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleUltimateActivate);
+		}
 	}
 }
 
@@ -266,10 +275,12 @@ void ADeathMetalCatCharacter::HandleJump(const FInputActionValue& Value)
 
 void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
 {
-	if (bIsDodging || bIsBlocking || bIsDashing)
+	if (bIsDodging || bIsBlocking || bIsDashing || bIsTransformed)
 	{
 		// Ignore re-triggers while already mid-dodge, and don't stack with Block/Dash -- these
-		// three are mutually exclusive movement states.
+		// three are mutually exclusive movement states. Also disabled while riding Fancy Pants --
+		// no Fancy-Cayde art exists for Dodge, so playing it would flash back to solo Cayde's sprite
+		// mid-transformation.
 		return;
 	}
 
@@ -402,9 +413,10 @@ void ADeathMetalCatCharacter::HandleAimDownReleased(const FInputActionValue& Val
 
 void ADeathMetalCatCharacter::HandleBlockStarted(const FInputActionValue& Value)
 {
-	if (bIsDodging || bIsDashing)
+	if (bIsDodging || bIsDashing || bIsTransformed)
 	{
-		// Don't stack with Dodge/Dash -- mutually exclusive movement states.
+		// Don't stack with Dodge/Dash -- mutually exclusive movement states. Also disabled while
+		// riding Fancy Pants -- see HandleDodge's comment on the same restriction.
 		return;
 	}
 
@@ -432,9 +444,10 @@ void ADeathMetalCatCharacter::HandleBlockReleased(const FInputActionValue& Value
 
 void ADeathMetalCatCharacter::HandleInvulnDash(const FInputActionValue& Value)
 {
-	if (bIsDodging || bIsBlocking || bIsDashing)
+	if (bIsDodging || bIsBlocking || bIsDashing || bIsTransformed)
 	{
-		// Don't stack with Dodge/Block, and ignore a repress mid-dash.
+		// Don't stack with Dodge/Block, and ignore a repress mid-dash. Also disabled while riding
+		// Fancy Pants -- see HandleDodge's comment on the same restriction.
 		return;
 	}
 
@@ -581,12 +594,17 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 	// Any real damage (past the i-frame check above) fully resets GnarlyRank -- deliberate
 	// high-risk/high-reward design per the GDD, not a bug.
 	ResetGnarlyRank();
+	AddRage(ActualDamage, RageGainPerDamageTaken);
 
 	TriggerQuip(EQuipTriggerType::Damage);
 
+	// Hurt flipbook is skipped while bIsTransformed -- there's no Fancy-Cayde hurt art, and briefly
+	// flashing back to solo Cayde's sprite mid-transformation would look like a bug rather than a
+	// deliberate hit-reaction. Damage/GnarlyRank/Rage above all still apply normally either way --
+	// per spec, no invulnerability during the ultimate, just no mismatched-art flash.
 	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
 	{
-		if (HurtFlipbook)
+		if (HurtFlipbook && !bIsTransformed)
 		{
 			SpriteComp->SetFlipbook(HurtFlipbook);
 			SpriteComp->SetLooping(false);
@@ -775,6 +793,151 @@ void ADeathMetalCatCharacter::ResetGnarlyRank()
 
 	GnarlyHitCount = 0;
 	GnarlyRank = 0;
+}
+
+void ADeathMetalCatCharacter::AddRage(float DamageAmount, float GainPerDamage)
+{
+	if (DamageAmount <= 0.f)
+	{
+		return;
+	}
+	RageMeter = FMath::Clamp(RageMeter + DamageAmount * GainPerDamage, 0.f, RageMax);
+}
+
+void ADeathMetalCatCharacter::HandleUltimateActivate(const FInputActionValue& Value)
+{
+	if (!IsRageFull() || bIsTransformed || bIsFadingOutForUltimate)
+	{
+		// Only usable once Rage is full, and can't be retriggered mid-sequence or mid-ride.
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Ultimate activated -- beginning transformation sequence"));
+
+	SpawnRageBeamEffect();
+
+	bIsFadingOutForUltimate = true;
+	UltimateFadeOutStartTime = GetWorld()->GetTimeSeconds();
+}
+
+void ADeathMetalCatCharacter::UpdateUltimateFadeOut(float DeltaSeconds)
+{
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	if (!SpriteComp)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - UltimateFadeOutStartTime;
+	const float Alpha = (UltimateFadeOutDuration > 0.f) ? FMath::Clamp(Elapsed / UltimateFadeOutDuration, 0.f, 1.f) : 1.f;
+
+	// Shrink toward 0 rather than an alpha fade -- see UltimateFadeOutDuration's doc comment for why
+	// (MaskedUnlitSpriteMaterial is Masked, not Translucent, so alpha alone can't produce a smooth
+	// fade). Sign of Scale.X is preserved so facing doesn't flip mid-shrink.
+	const FVector CurrentScale = SpriteComp->GetRelativeScale3D();
+	const float SignX = (CurrentScale.X < 0.f) ? -1.f : 1.f;
+	const float Magnitude = FMath::Lerp(1.f, 0.f, Alpha);
+	SpriteComp->SetRelativeScale3D(FVector(SignX * Magnitude, Magnitude, Magnitude));
+
+	if (Alpha >= 1.f)
+	{
+		bIsFadingOutForUltimate = false;
+		BeginUltimateTransformation();
+	}
+}
+
+void ADeathMetalCatCharacter::BeginUltimateTransformation()
+{
+	bIsTransformed = true;
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		const float SignX = (SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+		SpriteComp->SetRelativeScale3D(FVector(SignX, 1.f, 1.f));
+
+		if (FancyIdleFlipbook)
+		{
+			SpriteComp->SetFlipbook(FancyIdleFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->Play();
+			CurrentFlipbook = FancyIdleFlipbook;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Transformed -- riding Fancy Pants for %.1fs"), UltimateDuration);
+	GetWorldTimerManager().SetTimer(UltimateDurationTimerHandle, this, &ADeathMetalCatCharacter::EndUltimateTransformation, UltimateDuration, false);
+}
+
+void ADeathMetalCatCharacter::EndUltimateTransformation()
+{
+	// Instant swap back, not a mirrored fade -- explicitly allowed ("doesn't need to be elaborate")
+	// and simpler: UpdateAnimation's normal Idle/Run selection takes over on the very next Tick
+	// purely because bIsTransformed is now false, so there's nothing else to set here.
+	bIsTransformed = false;
+	RageMeter = 0.f;
+	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Ultimate ended -- reverted to normal Cayde, Rage reset to 0"));
+}
+
+void ADeathMetalCatCharacter::SpawnRageBeamEffect()
+{
+	if (!RageBeamMeshComponent)
+	{
+		RageBeamMeshComponent = NewObject<UStaticMeshComponent>(this, TEXT("RageBeamMesh"));
+		RageBeamMeshComponent->SetupAttachment(RootComponent);
+		RageBeamMeshComponent->RegisterComponent();
+		RageBeamMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		RageBeamMeshComponent->SetCastShadow(false);
+		RageBeamMeshComponent->SetMobility(EComponentMobility::Movable);
+
+		if (UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+		{
+			RageBeamMeshComponent->SetStaticMesh(CylinderMesh);
+		}
+
+		if (UMaterialInterface* BeamMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Characters/DeathMetalCat/Materials/M_RainbowBeam.M_RainbowBeam")))
+		{
+			RageBeamMID = UMaterialInstanceDynamic::Create(BeamMaterial, this);
+			RageBeamMeshComponent->SetMaterial(0, RageBeamMID);
+		}
+	}
+
+	// Tall, thin cylinder starting well above Cayde -- UpdateRageBeamEffect drops it down and fades
+	// it out over RageBeamLifetime, reading as "a beam of light drops from the sky" without needing
+	// a full Niagara system (see class doc / summary report for why this simpler approach was used).
+	RageBeamMeshComponent->SetRelativeLocation(FVector(0.f, 0.f, 800.f));
+	RageBeamMeshComponent->SetRelativeScale3D(FVector(1.5f, 1.5f, 10.f));
+	RageBeamMeshComponent->SetVisibility(true);
+
+	bRageBeamActive = true;
+	RageBeamStartTime = GetWorld()->GetTimeSeconds();
+}
+
+void ADeathMetalCatCharacter::UpdateRageBeamEffect(float DeltaSeconds)
+{
+	if (!bRageBeamActive || !RageBeamMeshComponent)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - RageBeamStartTime;
+	const float Alpha = (RageBeamLifetime > 0.f) ? FMath::Clamp(Elapsed / RageBeamLifetime, 0.f, 1.f) : 1.f;
+
+	if (RageBeamMID)
+	{
+		const float HueDegrees = FMath::Fmod(Elapsed * RageBeamHueCycleSpeed, 360.f);
+		const FLinearColor CycledColor = FLinearColor::MakeFromHSV8(static_cast<uint8>((HueDegrees / 360.f) * 255.f), 255, 255);
+		RageBeamMID->SetVectorParameterValue(TEXT("BeamColor"), CycledColor);
+		RageBeamMID->SetScalarParameterValue(TEXT("BeamOpacity"), 1.f - Alpha * 0.5f);
+	}
+
+	constexpr float BeamStartHeight = 800.f;
+	RageBeamMeshComponent->SetRelativeLocation(FVector(0.f, 0.f, FMath::Lerp(BeamStartHeight, 0.f, Alpha)));
+
+	if (Alpha >= 1.f)
+	{
+		bRageBeamActive = false;
+		RageBeamMeshComponent->SetVisibility(false);
+	}
 }
 
 void ADeathMetalCatCharacter::RecalculateXPToNextLevel()
@@ -1025,9 +1188,11 @@ namespace
 
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 {
-	if (bIsDashing)
+	if (bIsDashing || bIsTransformed)
 	{
-		// Committed burst move -- don't interrupt it with an attack.
+		// Committed burst move -- don't interrupt it with an attack. Also disabled while riding
+		// Fancy Pants -- no Fancy-Cayde sword art exists, and Gun Fire already covers the ultimate's
+		// one attack (the laser) -- see HandleShootStarted.
 		return;
 	}
 
@@ -1310,6 +1475,7 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	{
 		SpawnDamageNumber(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
 		RegisterGnarlyHit();
+		AddRage(DamageApplied, RageGainPerDamageDealt);
 
 		// Uppy-only: launches the hit enemy upward on top of normal damage -- see UppyLaunchVelocityZ.
 		if (bCurrentAttackLaunchesTarget)
@@ -1335,6 +1501,14 @@ namespace
 
 void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
 {
+	if (bIsTransformed)
+	{
+		// Gun Fire is repurposed into the ultimate's one attack for the duration of the ride --
+		// see HandleFancyAttack.
+		HandleFancyAttack();
+		return;
+	}
+
 	bIsHoldingShootButton = true;
 
 	// TEMP diagnostic: is Started re-firing mid-hold (it shouldn't -- EnhancedInput's Started only
@@ -1358,6 +1532,14 @@ void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
 
 void ADeathMetalCatCharacter::HandleShootHeld(const FInputActionValue& Value)
 {
+	if (bIsTransformed)
+	{
+		// Fancy Attack (HandleFancyAttack, via HandleShootStarted) is a single press, not
+		// hold-to-fire -- ShootAnimPhase never leaves None while transformed so this would no-op
+		// anyway, but guarded explicitly for clarity.
+		return;
+	}
+
 	// TEMP diagnostic: prints every Triggered tick's guard inputs, to see exactly why it does or
 	// doesn't proceed to FireShotTrace() each time.
 	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootHeld  bIsHoldingShootButton=%d  ShootAnimPhase=%d  bIsShooting=%d"),
@@ -1405,6 +1587,45 @@ void ADeathMetalCatCharacter::ResetShootState()
 	bIsShooting = false;
 }
 
+void ADeathMetalCatCharacter::HandleFancyAttack()
+{
+	if (bIsShooting || bIsPlayingFancyAttack)
+	{
+		// bIsShooting is the normal FireCooldown gate; bIsPlayingFancyAttack is also checked (not
+		// just bIsShooting) because releasing Gun Fire mid-animation clears bIsShooting early via
+		// HandleShootReleased -> ResetShootState -- without this, a quick tap-release-tap could
+		// re-trigger and restart the laser well before its ~1.25s animation actually finishes.
+		return;
+	}
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		if (FancyAttackFlipbook)
+		{
+			SpriteComp->SetFlipbook(FancyAttackFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = FancyAttackFlipbook;
+
+			// Protects this flipbook from UpdateAnimation's Idle/Gallop branch for its own full
+			// duration -- ShootAnimPhase never leaves None here (unlike normal gun fire), so without
+			// this dedicated flag the very next Tick would stomp it back within one frame.
+			bIsPlayingFancyAttack = true;
+			GetWorldTimerManager().SetTimer(FancyAttackTimerHandle, this, &ADeathMetalCatCharacter::ClearFancyAttackState, FancyAttackFlipbook->GetTotalDuration(), false);
+		}
+	}
+
+	// Reuses the exact same hitscan/damage/Rage pipeline as normal gun fire -- see FireShotTrace.
+	// UpdateHoldFireFlipbook (called from within FireShotTrace) sees bIsTransformed and leaves the
+	// flipbook we just set alone rather than switching to HoldFireFlipbook/AirDownShotFlipbook.
+	FireShotTrace();
+}
+
+void ADeathMetalCatCharacter::ClearFancyAttackState()
+{
+	bIsPlayingFancyAttack = false;
+}
+
 void ADeathMetalCatCharacter::BeginDraw()
 {
 	ShootAnimPhase = EShootPhase::Drawing;
@@ -1430,6 +1651,24 @@ void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne, bool bAngle
 	UPaperFlipbookComponent* SpriteComp = GetSprite();
 	if (!SpriteComp)
 	{
+		return;
+	}
+
+	if (bIsTransformed)
+	{
+		// Riding Fancy Pants: the ultimate's one attack always shows FancyAttackFlipbook regardless
+		// of grounded/airborne/angled state -- those sub-variants have no Fancy-Cayde equivalent art.
+		// HandleFancyAttack already sets this same flipbook before calling FireShotTrace (which is
+		// what calls this function), so this is normally a no-op guard rather than the first set --
+		// but it's needed to stop the grounded/airborne branch below from stomping it back to
+		// HoldFireFlipbook/AirDownShotFlipbook the instant this function runs.
+		if (FancyAttackFlipbook && CurrentFlipbook != FancyAttackFlipbook)
+		{
+			SpriteComp->SetFlipbook(FancyAttackFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = FancyAttackFlipbook;
+		}
 		return;
 	}
 
@@ -1561,6 +1800,7 @@ void ADeathMetalCatCharacter::FireShotTrace()
 			// Gun hits still charge GnarlyHitCount toward the next rank -- only the melee damage
 			// bonus itself is sword-exclusive, not rank progression.
 			RegisterGnarlyHit();
+			AddRage(DamageApplied, RageGainPerDamageDealt);
 		}
 	}
 	else if (bHit && Hit.GetActor())
@@ -1618,6 +1858,16 @@ void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 		UpdateInvulnDash();
 	}
 
+	if (bIsFadingOutForUltimate)
+	{
+		UpdateUltimateFadeOut(DeltaSeconds);
+	}
+
+	if (bRageBeamActive)
+	{
+		UpdateRageBeamEffect(DeltaSeconds);
+	}
+
 	if (bJumpDistanceTestActive)
 	{
 		UpdateJumpDistanceTest();
@@ -1658,6 +1908,13 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// progress. Note this checks ShootAnimPhase, not bIsShooting: bIsShooting is only the
 		// short per-shot fire-rate gate now, not the (much longer) whole-hold animation window.
 	}
+	else if (bIsPlayingFancyAttack)
+	{
+		// FancyAttackFlipbook is started once (non-looping) in HandleFancyAttack itself -- nothing
+		// to do here except make sure nothing else (the Idle/Gallop branch, specifically) stomps it
+		// while the ultimate's attack is playing. See bIsPlayingFancyAttack's own doc comment for
+		// why this dedicated flag exists (ShootAnimPhase doesn't cover this path).
+	}
 	else if (bIsDodging)
 	{
 		// The 5-frame handspring sequence is fully event-driven (HandleDodge / AdvanceDodgeFrame
@@ -1689,12 +1946,16 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 			CurrentFlipbook = WallSlideFlipbook;
 		}
 	}
-	else if (bAirborne)
+	else if (bAirborne && !bIsTransformed)
 	{
 		// FB_DeathMetalCat_Jump's two frames (rising pose, landing pose) are picked explicitly
 		// by velocity direction instead of left to play on the flipbook's own timer: how long
 		// the rising pose should hold depends on jump height/gravity, which varies per jump --
 		// a fixed per-keyframe hold on the asset can't express that, so this has to be code-driven.
+		// Skipped entirely while bIsTransformed -- there's no Fancy-Cayde jump art, so airborne
+		// while riding Fancy Pants falls through to the idle/gallop branch below instead (which
+		// picks FancyIdleFlipbook), rather than flashing solo Cayde's jump pose mid-transformation.
+		// Jumping itself is NOT disabled during the ultimate, only this specific visual.
 		if (JumpFlipbook && CurrentFlipbook != JumpFlipbook)
 		{
 			SpriteComp->SetFlipbook(JumpFlipbook);
@@ -1714,12 +1975,14 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 	{
 		// Walk removed as a separate state -- it briefly flashed on-screen right at movement start
 		// before Run took over, and served no purpose once Run covers slow-to-fast movement fine on
-		// its own. Any nonzero horizontal speed goes straight to Run, no threshold.
-		UPaperFlipbook* DesiredFlipbook = IdleFlipbook;
+		// its own. Any nonzero horizontal speed goes straight to Run, no threshold. While
+		// bIsTransformed, Idle/Run (and the airborne fallback above) are replaced by
+		// FancyIdle/FancyGallop -- the "riding Fancy Pants" ultimate moveset.
+		UPaperFlipbook* DesiredFlipbook = bIsTransformed ? FancyIdleFlipbook : IdleFlipbook;
 		const float CurrentMoveSpeed = FMath::Abs(Velocity.X);
 		if (CurrentMoveSpeed > KINDA_SMALL_NUMBER)
 		{
-			DesiredFlipbook = RunFlipbook;
+			DesiredFlipbook = bIsTransformed ? FancyGallopFlipbook : RunFlipbook;
 		}
 
 		if (DesiredFlipbook && DesiredFlipbook != CurrentFlipbook)

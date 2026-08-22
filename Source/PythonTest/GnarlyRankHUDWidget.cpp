@@ -84,6 +84,23 @@ namespace
 		const float Alpha = HealthPercent / HealthBarMidPercent;
 		return FMath::Lerp(Red, Yellow, Alpha);
 	}
+
+	// -- Rage bar --
+	//
+	// Widget-visual-styling constants, same reasoning as QuipFadeDuration above (no Blueprint asset
+	// to expose these as editable defaults on, so they live here rather than as UPROPERTYs).
+
+	/** Degrees/second the Rage bar's fill color cycles through the hue wheel -- independent of fill percent, unlike Health's color-by-percent lerp. */
+	constexpr float RageBarHueCycleSpeed = 120.f;
+
+	/** Sine-wave speed (radians/second) for the full-bar "ready" pulsate. */
+	constexpr float RageFullPulseSpeed = 8.f;
+
+	/** Peak scale the pulsate reaches (1.0 = no scale change) -- small and subtle per spec ("small scale-pulse"), not a dramatic zoom. */
+	constexpr float RageFullPulseMaxScale = 1.08f;
+
+	/** Max positional jitter (Slate units) applied on top of the pulsate while full -- small per spec ("slight jitter"). */
+	constexpr float RageFullJitterAmount = 3.f;
 }
 
 bool UGnarlyRankHUDWidget::Initialize()
@@ -239,6 +256,37 @@ bool UGnarlyRankHUDWidget::Initialize()
 			HealthTextSlot->SetAlignment(FVector2D(0.f, 0.f));
 			HealthTextSlot->SetPosition(FVector2D(260.f, 270.f));
 			HealthTextSlot->SetAutoSize(true);
+		}
+
+		// Rage bar, directly below HealthBar -- same position/size pattern, offset down by the bar's
+		// own height plus a small gap.
+		RageBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("RageBar"));
+		RageBar->SetPercent(0.f);
+
+		if (UCanvasPanelSlot* RageBarSlot = RootCanvas->AddChildToCanvas(RageBar))
+		{
+			RageBarSlot->SetAnchors(FAnchors(0.f, 0.f));
+			RageBarSlot->SetAlignment(FVector2D(0.f, 0.f));
+			RageBarSlot->SetPosition(FVector2D(30.f, 304.f));
+			RageBarSlot->SetSize(FVector2D(220.f, 24.f));
+			RageBarSlot->SetAutoSize(false);
+		}
+
+		// "RAGE" word label, same position pattern as HealthText -- Health has no word label (just
+		// its number), but Rage was explicitly asked to be labeled.
+		RageLabelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("RageLabelText"));
+		FSlateFontInfo RageFont = RageLabelText->GetFont();
+		RageFont.Size = 20;
+		RageLabelText->SetFont(RageFont);
+		RageLabelText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		RageLabelText->SetText(FText::FromString(TEXT("RAGE")));
+
+		if (UCanvasPanelSlot* RageLabelSlot = RootCanvas->AddChildToCanvas(RageLabelText))
+		{
+			RageLabelSlot->SetAnchors(FAnchors(0.f, 0.f));
+			RageLabelSlot->SetAlignment(FVector2D(0.f, 0.f));
+			RageLabelSlot->SetPosition(FVector2D(260.f, 304.f));
+			RageLabelSlot->SetAutoSize(true);
 		}
 
 		// -- Cayde's JRPG-style dialogue box (portrait + name + quip line) -- the one element on
@@ -442,6 +490,7 @@ void UGnarlyRankHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 	UpdateQuipFade();
 	UpdateRoomFade();
 	UpdateDeathScreenFade();
+	UpdateRageBarVisuals(InDeltaTime);
 }
 
 void UGnarlyRankHUDWidget::ShowQuip(const FString& Line, float DisplayDuration)
@@ -756,5 +805,52 @@ void UGnarlyRankHUDWidget::RefreshDisplay()
 			const FLinearColor CurrentTint = LowHealthTintImage->GetColorAndOpacity();
 			LowHealthTintImage->SetColorAndOpacity(FLinearColor(CurrentTint.R, CurrentTint.G, CurrentTint.B, TintOpacity));
 		}
+	}
+
+	// -- Rage bar percent -- fill COLOR is handled separately, every tick, in UpdateRageBarVisuals
+	// (it hue-cycles regardless of whether the percent itself changed), so only the percent value
+	// is gated here, same change-gated polling pattern as everything else on this widget.
+	const float CurrentRage = OwningCharacter->RageMeter;
+	const float CurrentRageMax = OwningCharacter->RageMax;
+
+	if (RageBar && (!FMath::IsNearlyEqual(CurrentRage, LastSeenRage) || !FMath::IsNearlyEqual(CurrentRageMax, LastSeenRageMax)))
+	{
+		LastSeenRage = CurrentRage;
+		LastSeenRageMax = CurrentRageMax;
+
+		const float RagePercent = (CurrentRageMax > 0.f) ? FMath::Clamp(CurrentRage / CurrentRageMax, 0.f, 1.f) : 0.f;
+		RageBar->SetPercent(RagePercent);
+	}
+}
+
+void UGnarlyRankHUDWidget::UpdateRageBarVisuals(float DeltaTime)
+{
+	if (!RageBar || !OwningCharacter)
+	{
+		return;
+	}
+
+	RageAnimTime += DeltaTime;
+
+	// Rainbow hue-cycle, independent of fill percent -- runs unconditionally (not gated on a
+	// changed value) since the hue has to keep advancing even while Rage sits still at 0 or full.
+	const float HueDegrees = FMath::Fmod(RageAnimTime * RageBarHueCycleSpeed, 360.f);
+	const FLinearColor CycledColor = FLinearColor::MakeFromHSV8(static_cast<uint8>((HueDegrees / 360.f) * 255.f), 255, 255);
+	RageBar->SetFillColorAndOpacity(CycledColor);
+
+	if (OwningCharacter->IsRageFull())
+	{
+		// Small scale-pulse + slight jitter to signal "ready" -- see class doc / RageFullPulseMaxScale
+		// and RageFullJitterAmount's own comments for why these stay subtle rather than dramatic.
+		const float PulseAlpha = (FMath::Sin(RageAnimTime * RageFullPulseSpeed) + 1.f) * 0.5f;
+		const float PulseScale = FMath::Lerp(1.f, RageFullPulseMaxScale, PulseAlpha);
+		RageBar->SetRenderScale(FVector2D(PulseScale, PulseScale));
+		RageBar->SetRenderTranslation(FVector2D(FMath::FRandRange(-RageFullJitterAmount, RageFullJitterAmount),
+			FMath::FRandRange(-RageFullJitterAmount, RageFullJitterAmount)));
+	}
+	else
+	{
+		RageBar->SetRenderScale(FVector2D(1.f, 1.f));
+		RageBar->SetRenderTranslation(FVector2D(0.f, 0.f));
 	}
 }

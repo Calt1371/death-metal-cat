@@ -18,6 +18,9 @@ class ADamageNumberActor;
 class UGnarlyRankHUDWidget;
 class UDataTable;
 class UInputComponent;
+class UStaticMeshComponent;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
 struct FInputActionValue;
 struct FHitResult;
 
@@ -162,8 +165,29 @@ protected:
 	UFUNCTION()
 	void OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-	/** Bound to the ShootAction's Started event: enters the held-fire state and begins the quick-draw pose. */
+	/** Bound to the ShootAction's Started event: enters the held-fire state and begins the quick-draw pose. Delegates entirely to HandleFancyAttack while bIsTransformed -- Gun Fire is repurposed into the ultimate's laser attack for the duration of the ride. */
 	void HandleShootStarted(const FInputActionValue& Value);
+
+	/**
+	 * The ultimate's one attack (rainbow laser eyes), triggered by Gun Fire while bIsTransformed
+	 * instead of the normal draw/hold-fire sequence -- a single press, not hold-to-fire (the source
+	 * art reads as one dramatic blast, not a sustained stream). Plays FancyAttackFlipbook once and
+	 * fires a single horizontal hitscan shot, reusing GunBaseDamage/Dexterity/FireCooldown exactly
+	 * as normal gun fire does -- no damage bonus for "powerful rainbow laser eyes" was requested
+	 * beyond the visual, so none was added; flag it if you want the ultimate's attack to hit harder.
+	 */
+	void HandleFancyAttack();
+
+	/**
+	 * Timer callback: ends the FancyAttackFlipbook protection window started by HandleFancyAttack
+	 * (armed for FancyAttackFlipbook->GetTotalDuration(), so retiming that flipbook's fps later
+	 * can't silently cut it short -- same self-correcting pattern as InvulnDash's own duration fix).
+	 * Needed because ShootAnimPhase never leaves None during a Fancy Attack (HandleFancyAttack
+	 * bypasses the normal draw/hold-fire state machine entirely), so without a dedicated flag
+	 * UpdateAnimation's lowest-priority Idle/Gallop branch would stomp FancyAttackFlipbook back
+	 * within a single tick.
+	 */
+	void ClearFancyAttackState();
 
 	/**
 	 * Bound to the ShootAction's Triggered event (fires every tick while held, including the same
@@ -281,6 +305,45 @@ protected:
 	 * InvulnDashDuration) regardless of movement mode.
 	 */
 	void UpdateInvulnDash();
+
+	/**
+	 * Adds to RageMeter, clamped to [0, RageMax] -- called from both OnSwordHitboxBeginOverlap/
+	 * FireShotTrace (damage DEALT, scaled by RageGainPerDamageDealt) and TakeDamage (damage TAKEN,
+	 * scaled by RageGainPerDamageTaken) so either side of combat builds toward the ultimate. Both
+	 * scale with the actual damage amount rather than a flat per-hit tick (deliberately different
+	 * from GnarlyRank's flat-count model).
+	 */
+	void AddRage(float DamageAmount, float GainPerDamage);
+
+	/**
+	 * Bound to the RageActivateAction's Started event. Ignored unless RageMeter is full and Cayde
+	 * isn't already transformed -- see IsRageFull(). Kicks off the ultimate sequence: spawns the
+	 * rainbow beam effect and starts fading regular Cayde out (see UpdateUltimateFadeOut); RageMeter
+	 * itself is NOT reset here -- only at the end of the 10-second window, in
+	 * EndUltimateTransformation, per spec ("after 10 seconds: revert... and reset Rage to 0").
+	 */
+	void HandleUltimateActivate(const FInputActionValue& Value);
+
+	/** Called every Tick while bIsFadingOutForUltimate: shrinks the sprite's scale toward 0 over UltimateFadeOutDuration, then calls BeginUltimateTransformation once it reaches 0. */
+	void UpdateUltimateFadeOut(float DeltaSeconds);
+
+	/** Swaps into the "riding Fancy Pants" state: sets bIsTransformed, restores sprite scale to 1 (now showing FancyIdleFlipbook instead of the just-shrunk normal sprite), and arms the 10-second UltimateDurationTimerHandle. */
+	void BeginUltimateTransformation();
+
+	/** Timer callback (fired UltimateDuration seconds after BeginUltimateTransformation): reverts bIsTransformed to false (an instant swap back, not a mirrored fade -- see its own doc comment for why) and resets RageMeter to 0. */
+	void EndUltimateTransformation();
+
+	/**
+	 * Spawns the rainbow beam-from-the-sky visual: a simple scaling cylinder mesh using
+	 * M_RainbowBeam (a small unlit translucent material created for this, with a BeamColor vector
+	 * parameter) positioned above Cayde, dropped down over its own short lifetime and hue-cycled
+	 * every tick via UpdateRageBeamEffect. A simple scaling mesh rather than a full Niagara system --
+	 * see class doc / summary report for why.
+	 */
+	void SpawnRageBeamEffect();
+
+	/** Per-tick hue-cycle and drop-in animation for the active beam effect actor -- no-ops once RageBeamActor has been destroyed (its lifespan already expired). */
+	void UpdateRageBeamEffect(float DeltaSeconds);
 
 	/** Picks Idle/Walk/Run/Jump/Dodge/Dash/Block/SwordAttack/Shoot based on current state, and flips the sprite to face travel direction. */
 	void UpdateAnimation();
@@ -413,6 +476,7 @@ public:
 	void TestJumpDistance(const FString& JumpTypeName);
 
 	/** Public accessor for GnarlyRankHUDWidgetInstance -- ARoomProgressionManager::BeginRoomTransition needs to drive the room-transition fade (StartRoomFadeOut/StartRoomFadeIn) on it, and can't reach a private member of another class directly. May return nullptr before NotifyControllerChanged has ever created the widget. */
+	UFUNCTION(BlueprintCallable, Category = "UI")
 	UGnarlyRankHUDWidget* GetGnarlyRankHUDWidget() const { return GnarlyRankHUDWidgetInstance; }
 
 	/** Tick-driven follow-up to TestJumpDistance -- holds forward input every frame and detects landing (see TestJumpDistance's own doc comment). No-ops entirely while bJumpDistanceTestActive is false. */
@@ -461,6 +525,10 @@ public:
 	/** Digital (bool) action, triggers the invulnerable forward dash on press. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
 	TObjectPtr<UInputAction> InvulnDashAction;
+
+	/** Digital (bool) action, activates the Rage ultimate on press -- only takes effect while RageMeter is full (see HandleUltimateActivate). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
+	TObjectPtr<UInputAction> RageActivateAction;
 
 	// -- Movement --
 
@@ -611,6 +679,20 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> InvulnDashFlipbook;
+
+	// -- Rage / Ultimate ("riding Fancy Pants") --
+
+	/** Shown looping while bIsTransformed and grounded/stationary -- replaces IdleFlipbook for the duration of the ultimate. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> FancyIdleFlipbook;
+
+	/** Shown looping while bIsTransformed and moving horizontally -- replaces RunFlipbook for the duration of the ultimate. No separate walk/run split for the mount, same as solo Cayde post-Walk-removal. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> FancyGallopFlipbook;
+
+	/** Shown once (non-looping) for the rainbow-laser-eyes attack -- Gun Fire is repurposed to trigger this instead of the normal shoot sequence while bIsTransformed; see HandleShootStarted. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> FancyAttackFlipbook;
 
 	// -- Dodge --
 
@@ -1042,6 +1124,73 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Quip", meta = (ClampMin = "0"))
 	float GlobalQuipDebounce = 6.f;
 
+	// -- Rage / Ultimate --
+	//
+	// Fills from damage Cayde deals OR receives (see AddRage), scaling with actual damage amounts
+	// rather than a flat per-hit tick (deliberately different from GnarlyRank's flat-count model,
+	// since Rage is meant to reflect the intensity of a fight, not just its length). Activating
+	// while full drops a rainbow beam, fades Cayde out, and swaps him into a 10-second "riding Fancy
+	// Pants" state (see RageActivateAction/HandleUltimateActivate).
+
+	/** Current Rage, 0..RageMax. Reset to 0 only when the 10-second transformed window ends (EndUltimateTransformation), NOT at activation -- it stays visually full for the whole ultimate. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rage")
+	float RageMeter = 0.f;
+
+	/** Rage is full (and the ultimate can be activated) at this value. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float RageMax = 100.f;
+
+	/**
+	 * Rage gained per point of damage Cayde DEALS (sword or gun, post-multiplier actual damage
+	 * applied) -- e.g. a 20-base sword hit at RageGainPerDamageDealt=0.5 grants 10 Rage. Chosen so a
+	 * string of solid sword hits fills the meter in roughly the same ballpark of hits as a GnarlyRank
+	 * rank-up (10-ish), keeping the two systems' pacing consistent with each other. Placeholder
+	 * value, tune freely; document any change here since this is clearly a first-pass number.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float RageGainPerDamageDealt = 0.5f;
+
+	/**
+	 * Rage gained per point of damage Cayde TAKES (post-Defense-resistance actual damage, i.e. only
+	 * damage that actually lands -- CanTakeDamage()==false, like blocking or i-frames, grants none,
+	 * same gate TakeDamage already uses for GnarlyRank resets). Same 0.5 scale as
+	 * RageGainPerDamageDealt for now -- no strong reason found to weight taking damage differently
+	 * from dealing it, so kept symmetric rather than inventing an arbitrary asymmetry. Placeholder
+	 * value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float RageGainPerDamageTaken = 0.5f;
+
+	/** How long (seconds) the "riding Fancy Pants" transformed state lasts once activated. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float UltimateDuration = 10.f;
+
+	/**
+	 * How long (seconds) regular Cayde's sprite takes to shrink away once the ultimate is activated,
+	 * before FancyIdleFlipbook takes over -- see UpdateUltimateFadeOut. A scale-down, not an alpha
+	 * fade: the sprite material (MaskedUnlitSpriteMaterial) is Masked, not Translucent, so alpha only
+	 * acts as a binary cutout threshold and can't produce a smooth visual fade -- shrinking to zero
+	 * reads as "fades away quickly" without needing a different material.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float UltimateFadeOutDuration = 0.25f;
+
+	/** How long (seconds) the rainbow beam-from-the-sky effect actor lives before self-destructing -- see SpawnRageBeamEffect. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float RageBeamLifetime = 1.f;
+
+	/** Degrees per second the beam's BeamColor material parameter cycles through the hue wheel -- see UpdateRageBeamEffect. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float RageBeamHueCycleSpeed = 360.f;
+
+	/** True while riding Fancy Pants (the 10-second ultimate window) -- UpdateAnimation swaps Idle/Run for FancyIdle/FancyGallop, and HandleShootStarted repurposes Gun Fire into the laser attack, while this is true. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rage")
+	bool bIsTransformed = false;
+
+	/** Returns true once RageMeter has reached RageMax -- HandleUltimateActivate gates on this, and the HUD gates the pulsate/shake effect on it too. */
+	UFUNCTION(BlueprintCallable, Category = "Rage")
+	bool IsRageFull() const { return RageMeter >= RageMax; }
+
 private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
@@ -1131,6 +1280,31 @@ private:
 	float DashFacingSignAtStart = 1.f;
 
 	FTimerHandle InvulnDashTimerHandle;
+
+	/** True from HandleUltimateActivate until the shrink-to-zero scale-down finishes; UpdateUltimateFadeOut no-ops entirely while false, and is what actually calls BeginUltimateTransformation once the scale hits 0. */
+	bool bIsFadingOutForUltimate = false;
+
+	/** GetWorld()->GetTimeSeconds() when the current ultimate fade-out started -- UpdateUltimateFadeOut measures elapsed time from this rather than accumulating DeltaSeconds itself. */
+	float UltimateFadeOutStartTime = 0.f;
+
+	FTimerHandle UltimateDurationTimerHandle;
+
+	/** Lazily created the first time the ultimate fires, then reused (moved/rescaled/re-lifetimed) every activation rather than spawned fresh each time -- a simple attached mesh component, not a separate actor, so it automatically follows Cayde's position with no extra tracking logic. */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> RageBeamMeshComponent;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> RageBeamMID;
+
+	/** True for RageBeamLifetime seconds after SpawnRageBeamEffect fires; UpdateRageBeamEffect no-ops entirely while false. */
+	bool bRageBeamActive = false;
+
+	float RageBeamStartTime = 0.f;
+
+	/** True while FancyAttackFlipbook is protected from being overwritten by UpdateAnimation's Idle/Gallop branch -- see ClearFancyAttackState. */
+	bool bIsPlayingFancyAttack = false;
+
+	FTimerHandle FancyAttackTimerHandle;
 
 	FTimerHandle ShootTimerHandle;
 	FTimerHandle ShootDrawTimerHandle;

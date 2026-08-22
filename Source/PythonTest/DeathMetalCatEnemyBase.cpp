@@ -104,6 +104,19 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 		SetActorLocation(Loc);
 	}
 
+	// Opt-in flight mode (see bFliesFreely's own comment) -- switches off the normal
+	// MOVE_Walking/full-gravity ground behavior so this actor isn't pulled back down to the
+	// floor plane; Tick's chase block separately adds the actual Z-axis movement toward the
+	// player once this is set.
+	if (bFliesFreely)
+	{
+		if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+		{
+			MoveComp->SetMovementMode(MOVE_Flying);
+			MoveComp->GravityScale = 0.f;
+		}
+	}
+
 	InitialSpawnTransform = GetActorTransform();
 
 	if (PlaceholderMesh)
@@ -133,6 +146,11 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->MaxWalkSpeed = MoveSpeed;
+		// MOVE_Flying reads MaxFlySpeed, a completely separate cap from MaxWalkSpeed -- without
+		// this, bFliesFreely subclasses moved at the engine's untouched MaxFlySpeed default
+		// (600) regardless of MoveSpeed. Harmless to set unconditionally on ground enemies too,
+		// since they never enter MOVE_Flying and this cap just sits unused.
+		MoveComp->MaxFlySpeed = MoveSpeed;
 	}
 
 	// Finds whatever PaperFlipbookComponent exists on this actor regardless of whether it's
@@ -147,15 +165,21 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 	const FVector PlayerLocation = CachedPlayerCharacter->GetActorLocation();
 	const float DistanceToPlayer = FVector::Dist(MyLocation, PlayerLocation);
 	const float XDistance = PlayerLocation.X - MyLocation.X;
+	// Only actually used for movement when bFliesFreely -- ground enemies never leave their
+	// spawn-snapped Z, so this is always ~0 for them and harmless to compute unconditionally.
+	const float ZDistance = PlayerLocation.Z - MyLocation.Z;
 
 	// Facing: whenever the player is within DetectionRadius at all (any band), face toward them --
 	// same Scale.X-sign convention ADeathMetalCatCharacter's own UpdateAnimation uses for its own
-	// sprite (>= 0 faces +X/right, < 0 faces -X/left). Deliberately not gated on bIsAdvancing --
-	// the enemy should keep facing the player even while stopped for melee/ranged attacks.
+	// sprite (>= 0 faces +X/right, < 0 faces -X/left) -- except where bSpriteFacesReversed opts a
+	// subclass out because its own art was authored facing the opposite default way (see that
+	// property's own comment). Deliberately not gated on bIsAdvancing -- the enemy should keep
+	// facing the player even while stopped for melee/ranged attacks.
 	if (CachedFlipbookComponent && DistanceToPlayer <= DetectionRadius && FMath::Abs(XDistance) > KINDA_SMALL_NUMBER)
 	{
 		FVector Scale = CachedFlipbookComponent->GetRelativeScale3D();
-		const float DesiredSign = (XDistance < 0.f) ? -1.f : 1.f;
+		const float TowardPlayerSign = (XDistance < 0.f) ? -1.f : 1.f;
+		const float DesiredSign = bSpriteFacesReversed ? -TowardPlayerSign : TowardPlayerSign;
 		if (!FMath::IsNearlyEqual(FMath::Sign(Scale.X), DesiredSign))
 		{
 			Scale.X = DesiredSign * FMath::Abs(Scale.X);
@@ -191,7 +215,15 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 		}
 		else if (DistanceToPlayer <= DetectionRadius)
 		{
-			AddMovementInput(FVector(FMath::Sign(XDistance), 0.f, 0.f), 1.f);
+			// Ground enemies: unchanged, X-only unit vector. Flying: plain direct-approach
+			// toward the player's actual position on both axes (normalized so diagonal
+			// movement isn't faster than axis-aligned movement) -- still no
+			// pathfinding/obstacle avoidance, matching the GDD's existing convention for this
+			// enemy system, just extended to two axes instead of one.
+			const FVector MoveDirection = bFliesFreely
+				? FVector(XDistance, 0.f, ZDistance).GetSafeNormal()
+				: FVector(FMath::Sign(XDistance), 0.f, 0.f);
+			AddMovementInput(MoveDirection, 1.f);
 			bIsAdvancing = true;
 		}
 	}

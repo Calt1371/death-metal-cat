@@ -1,0 +1,38 @@
+%% Death Metal Cat -- three-agent content pipeline (GDD Section 4.2)
+%% Data flow as actually demonstrated by Tools/test_agent_crew_pipeline.py's Room1 sandboxed
+%% test run (Tools/test_output/pipeline_run_room1.json) -- not an aspirational diagram.
+flowchart TD
+    subgraph INPUTS["Real project data (never hardcoded/guessed)"]
+        MC["Movement constants\n(JumpZVelocity, GravityZ, wall-jump/dodge params\nqueried live from BP_DeathMetalCat's CDO)"]
+        ROOMS["ALL_ROOMS\n(room_id, room_role, difficulty_tier --\nsingle source of truth, reused by agent 2)"]
+        VOICE["Cayde's locked voice profile\n(hardcoded in Quip Generator's system prompt --\nonly character in the project)"]
+    end
+
+    RGD["Agent 1: Room Geometry Designer\nTools/room_geometry_designer.py\ngenerate_valid_room()"]
+    LED["Agent 2: Level & Encounter Designer\nTools/level_encounter_designer.py\ngenerate_valid_population()"]
+    QG["Agent 3: Quip Generator\nTools/quip_generator.py\ngenerate_unique_quip()"]
+
+    MC --> RGD
+    ROOMS -- "room_id, role, tier, target_length" --> RGD
+    RGD -- "pieces[] (ordered traversal sequence)\nspawn_markers[] {marker_id, marker_type, after_piece_index}" --> LED
+    ROOMS -- "same role/tier (single source of truth)" --> LED
+    LED -- "populations[] {marker_id, population: enemy|pickup|empty, enemy_count?, pickup_type?, rationale}" --> SELECT{"marker populated\nwith an enemy?"}
+    VOICE --> QG
+    SELECT -- "yes -- e.g. sm_003" --> QG
+    SELECT -- "no (pickup/empty) -- no quip call" --> SKIP["quip_selected: null"]
+    QG -- '"kill" trigger quip\n{line, sound_tag}' --> TRACE
+
+    RGD -.demo output.-> G1[/"room1_geometry_demo.json"/]
+    LED -.demo output.-> G2[/"room1_encounters_demo.json"/]
+    QG -.demo output.-> G3[/"room1_quips_demo.json"/]
+
+    TRACE["pipeline_run_room1.json\ncombined trace, keyed by marker_id --\nproves agent 1's markers are what agent 2\nmakes a decision about, agent 2's decision is\nwhat determines whether agent 3 gets called\nfor that marker at all, and agent 3's output\nis what would actually be voiced"]
+    G1 --> TRACE
+    G2 --> TRACE
+    G3 --> TRACE
+    SKIP --> TRACE
+
+    style RGD fill:#2b6cb0,color:#fff
+    style LED fill:#c05621,color:#fff
+    style QG fill:#276749,color:#fff
+    style TRACE fill:#553c9a,color:#fff

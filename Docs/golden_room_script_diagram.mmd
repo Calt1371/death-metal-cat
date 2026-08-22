@@ -1,0 +1,61 @@
+%% The "Golden Room" import/spawn scripts -- deterministic editor-scripting bridges from
+%% agent JSON decisions to real live-level actors. Concrete data flow shown is the actual
+%% Room7 live-build run (Tools/test_output/golden_script_room7_live_build.json). Also shows
+%% where Foundation Extractor fits: it measures the hand-built golden room (Room1) and is
+%% INTENDED to govern generation downstream, but that link is currently manual/human-in-the-loop,
+%% not a live code dependency -- see docs/golden_room_script_README.md for the honest gap.
+flowchart TD
+    GOLDEN["Room1 -- hand-built \"golden\" room\n(real assets, real measurements,\nRoom1-6's art-dressed standard)"]
+    FE["Tools/foundation_extractor.py\n(READ-ONLY -- measures Room1 live,\nnever modifies it)"]
+    SPEC["Tools/biome_spec_AssassinCity.json\nmovement constants + gap tolerances\n+ art placement conventions"]
+    GOLDEN --> FE --> SPEC
+
+    SPEC -. "INTENDED: \"contract for downstream\nroom-generation agents to consume\"\nACTUAL: no code reads this file\nexcept the Extractor itself -- link is\ncurrently manual (human re-syncs constants),\nand has already drifted once\n(JumpZVelocity 773.22 live vs\n708.652466 hardcoded)" .-> RGD_CONST
+
+    subgraph RGD_CONST["room_geometry_designer.py's own\nhardcoded movement constants\n(GRAVITY_Z, JUMP_Z_VELOCITY, MAX_JUMP_HEIGHT, ...)"]
+    end
+
+    subgraph JSON_INPUTS["Agent JSON (already generated/validated, not touched by these scripts)"]
+        RG["Tools/room_geometry_Room7.json\n(Room Geometry Designer output --\npieces[] + spawn_markers[])"]
+        EP["Tools/encounter_population_Room7.json\n(Level & Encounter Designer output --\npopulation decision per marker)"]
+    end
+    RGD_CONST --> RG
+
+    PRECOND{"RoomShell_Room7\nalready in the level?"}
+    CREATE["Create RoomShell_ROOM7\n(live-computed offset: 5250 units clear\nof every other room's real bbox)"]
+
+    IMPORT["Tools/import_room_geometry.py --room Room7"]
+    SPAWN["Tools/spawn_encounter_actors.py --room Room7"]
+
+    RG --> IMPORT
+    PRECOND -- "no -- must create first" --> CREATE --> IMPORT
+    PRECOND -- "yes" --> IMPORT
+
+    IMPORT -- "deletes old Floor_/Wall_/Marker_\nROOM7 actors first (idempotent)" --> IMPORT
+    IMPORT -- "flat_run/ledge_step/enemy_arena/drop_down\n-> grey StaticMeshActor floor" --> FLOORS["7 floor actors"]
+    IMPORT -- "wall_jump_shaft\n-> grey StaticMeshActor wall" --> WALLS["1 wall actor"]
+    IMPORT -- "gap -> no actor, just advances running_x" --> GAPNOTE["(3 gaps, no geometry)"]
+    IMPORT -- "spawn_markers[] -> AEncounterSpawnMarker\ncentered on referenced piece,\nmarker_id/marker_type set from JSON" --> MARKERS["11 EncounterSpawnMarker actors"]
+
+    MARKERS --> SPAWN
+    EP --> SPAWN
+    SPAWN -- "deletes old SpawnedEnemy_ROOM7_*\nactors first (idempotent)" --> SPAWN
+    SPAWN -- 'population="enemy" -> match marker_id\n(editor property, not label) -> spawn\nBP_EnemyBase x enemy_count' --> ENEMIES["31 SpawnedEnemy actors\n(9 EnemySpawn markers)"]
+    SPAWN -- 'population="pickup" -> logged & SKIPPED\n(no pickup actor class exists yet)' --> PICKUPSKIP["2 PickupSpawn markers skipped"]
+    SPAWN -- 'population="empty" -> nothing to do' --> EMPTYNOTE["(0 empty this run)"]
+
+    FLOORS --> VERIFY
+    WALLS --> VERIFY
+    MARKERS --> VERIFY
+    ENEMIES --> VERIFY
+    VERIFY["Verification pass\nbbox clearance vs all 7 other rooms: clear\nactor counts match source JSON exactly"]
+    VERIFY --> LIVE["Real, permanent actors in\nContent/L_ControllerTestRange.umap\n(grey blockout, functionally correct)"]
+
+    SPEC -. "art_placement data (scale/color/rotation/\ndepth conventions) NOT consumed by\nimport_room_geometry.py -- this is exactly\nwhat's missing to make LIVE look like\nRoom1-6's art-dressed standard instead\nof grey blockout" .-> LIVE
+
+    style IMPORT fill:#2b6cb0,color:#fff
+    style SPAWN fill:#c05621,color:#fff
+    style VERIFY fill:#553c9a,color:#fff
+    style LIVE fill:#276749,color:#fff
+    style FE fill:#2b6cb0,color:#fff
+    style SPEC fill:#553c9a,color:#fff

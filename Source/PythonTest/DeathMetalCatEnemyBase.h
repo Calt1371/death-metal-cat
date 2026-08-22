@@ -105,9 +105,22 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float DetectionRadius = 800.f;
 
-	/** Straight-line advance speed (uu/s) toward the player once detected -- drives CharacterMovementComponent::MaxWalkSpeed; no pathfinding, just AddMovementInput along X. Placeholder value, tune freely. */
+	/** Straight-line advance speed (uu/s) toward the player once detected -- drives CharacterMovementComponent::MaxWalkSpeed; no pathfinding, just AddMovementInput along X (and Z too, if bFliesFreely). Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float MoveSpeed = 200.f;
+
+	/**
+	 * Per-subclass opt-in for free vertical movement -- same pattern as bSpriteFacesReversed.
+	 * False (default) is the normal ground-enemy behavior: MOVE_Walking, full gravity, chase
+	 * logic advances along X only, exactly as it already did before this property existed.
+	 * True switches BeginPlay to MOVE_Flying with zero gravity, and Tick's chase logic additionally
+	 * computes Z distance to the player and moves toward it -- still plain direct-approach movement
+	 * (no pathfinding/obstacle avoidance), just on two axes instead of one. Set true only on
+	 * BP_EnemyDeathBotFlying; ground enemies (BP_EnemyDeathBotWalking, BP_EnemyBase) must stay at
+	 * this default so their movement is byte-for-byte unchanged.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat")
+	bool bFliesFreely = false;
 
 	/**
 	 * Plain 3D distance (uu) within which the enemy stops to deal contact damage instead of
@@ -138,9 +151,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
 	float ProjectileSpeed = 800.f;
 
-	/** Damage a projectile deals on hitting the player, via the same ApplyDamage path as contact damage. Placeholder value, tune freely. */
+	/** Damage a projectile deals on hitting the player, via the same ApplyDamage path as contact damage. Halved from the original 8 -- enemy ranged damage was landing too hard. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
-	float ProjectileDamage = 8.f;
+	float ProjectileDamage = 4.f;
 
 	/** Seconds a projectile survives before self-destructing if it never hits the player -- at a constant ProjectileSpeed this also caps its effective max range. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
@@ -213,6 +226,22 @@ protected:
 	/** How long the hit-flash color lasts, in seconds. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))
 	float HitFlashDuration = 0.15f;
+
+	/**
+	 * Per-subclass override for a sprite sheet whose art was authored facing -X (left) by
+	 * default rather than +X (right) -- Tick's facing-toward-player logic assumes unmirrored
+	 * (Scale.X positive) art faces +X, same convention ADeathMetalCatCharacter's own sprite
+	 * uses; confirmed via live PIE testing that BP_EnemyDeathBotWalking's art is authored the
+	 * opposite way (it visibly faced away from the player with the "normal" sign mapping,
+	 * while the underlying XDistance-to-Scale.X calculation itself was verified correct).
+	 * Defaults false (matches the normal/Cayde convention) so this must be explicitly opted
+	 * into per-Blueprint rather than assumed uniform across enemy types -- DeathBotFlying's own
+	 * art convention was NOT confirmed either way (its sprite has no clear front/back tell to
+	 * verify from a screenshot), so it deliberately stays at this default rather than being
+	 * lumped in with DeathBotWalking's confirmed reversal.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
+	bool bSpriteFacesReversed = false;
 
 	/** How many on/off visibility toggles the death-blink does before disappearing for good. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))

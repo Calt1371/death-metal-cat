@@ -1,0 +1,134 @@
+{
+  "room": "Room1",
+  "platform_count": 15,
+  "gap_count": 12,
+  "gaps": [
+    {
+      "from_label": "OneWayPlatform13",
+      "to_label": "OneWayPlatform14",
+      "distance": 197.58000821992755,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform11",
+      "to_label": "OneWayPlatform12",
+      "distance": 112.08000208437443,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform14",
+      "to_label": "OneWayPlatform11",
+      "distance": 77.67999267578125,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform7",
+      "to_label": "OneWayPlatform14",
+      "distance": 127.67999267578125,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "Floor_ROOM1_00_FlatRun2",
+      "to_label": "Floor_ROOM1_00_FlatRun",
+      "distance": 1.5,
+      "reachable_by": [
+        "jump",
+        "wall_jump",
+        "dodge"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform2",
+      "to_label": "OneWayPlatform3",
+      "distance": 15.50001105293677,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform4",
+      "to_label": "OneWayPlatform5",
+      "distance": 268.000006403774,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform8",
+      "to_label": "OneWayPlatform7",
+      "distance": 177.67999267578125,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform7",
+      "to_label": "OneWayPlatform10",
+      "distance": 97.67999267578125,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform14",
+      "to_label": "OneWayPlatform15",
+      "distance": 207.67999267578125,
+      "reachable_by": [],
+      "tolerance": "tight",
+      "passed": false
+    },
+    {
+      "from_label": "OneWayPlatform10",
+      "to_label": "OneWayPlatform15",
+      "distance": 17.67999267578125,
+      "reachable_by": [],
+      "tolerance": "tight",
+      "passed": false
+    },
+    {
+      "from_label": "OneWayPlatform11",
+      "to_label": "OneWayPlatform15",
+      "distance": 627.6799926757812,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    }
+  ],
+  "room_passed": false,
+  "failed_gap_count": 2
+}

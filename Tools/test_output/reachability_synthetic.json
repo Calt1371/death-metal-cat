@@ -1,0 +1,37 @@
+{
+  "room": "synthetic_platform_data.json",
+  "platform_count": 3,
+  "gap_count": 3,
+  "gaps": [
+    {
+      "from_label": "PlatformA",
+      "to_label": "PlatformB",
+      "distance": 100.0,
+      "reachable_by": [
+        "jump",
+        "wall_jump",
+        "dodge"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "PlatformA",
+      "to_label": "PlatformC",
+      "distance": 4900.0,
+      "reachable_by": [],
+      "tolerance": "tight",
+      "passed": false
+    },
+    {
+      "from_label": "PlatformB",
+      "to_label": "PlatformC",
+      "distance": 4700.0,
+      "reachable_by": [],
+      "tolerance": "tight",
+      "passed": false
+    }
+  ],
+  "room_passed": false,
+  "failed_gap_count": 2
+}

@@ -1,0 +1,5 @@
+[
+  {"label": "PlatformA", "left_x": 0.0, "right_x": 100.0, "top_z": 0.0},
+  {"label": "PlatformB", "left_x": 200.0, "right_x": 300.0, "top_z": 0.0},
+  {"label": "PlatformC", "left_x": 5000.0, "right_x": 5100.0, "top_z": 0.0}
+]

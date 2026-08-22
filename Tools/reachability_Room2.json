@@ -1,0 +1,108 @@
+{
+  "room": "Room2",
+  "platform_count": 13,
+  "gap_count": 10,
+  "gaps": [
+    {
+      "from_label": "OneWayPlatform_ROOM2_B_Floating7",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating5",
+      "distance": 217.67999267578125,
+      "reachable_by": [
+        "jump",
+        "wall_jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform_ROOM2_B_Floating7",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating6",
+      "distance": 387.67999267578125,
+      "reachable_by": [
+        "jump",
+        "wall_jump",
+        "dodge"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform_ROOM2_B_Floating3",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating2",
+      "distance": 217.67999267578125,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "Floor_ROOM2_00_FlatRun6",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating5",
+      "distance": 306.079996407032,
+      "reachable_by": [],
+      "tolerance": "tight",
+      "passed": false
+    },
+    {
+      "from_label": "Floor_ROOM2_00_FlatRun4",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating",
+      "distance": 216.07999661124086,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "Floor_ROOM2_00_FlatRun5",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating",
+      "distance": 401.5999960645404,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform_ROOM2_B_Floating4",
+      "to_label": "Floor_ROOM2_00_FlatRun4",
+      "distance": 216.079996407032,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "OneWayPlatform_ROOM2_B_Floating",
+      "to_label": "Floor_ROOM2_00_FlatRun6",
+      "distance": 216.07999661124086,
+      "reachable_by": [],
+      "tolerance": "tight",
+      "passed": false
+    },
+    {
+      "from_label": "OneWayPlatform_ROOM2_B_Floating4",
+      "to_label": "Floor_ROOM2_00_FlatRun5",
+      "distance": 401.59999626874924,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    },
+    {
+      "from_label": "Floor_ROOM2_00_FlatRun3",
+      "to_label": "OneWayPlatform_ROOM2_B_Floating4",
+      "distance": 276.079996407032,
+      "reachable_by": [
+        "jump"
+      ],
+      "tolerance": "comfortable",
+      "passed": true
+    }
+  ],
+  "room_passed": false,
+  "failed_gap_count": 2
+}

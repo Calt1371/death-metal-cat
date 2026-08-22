@@ -1,0 +1,30 @@
+{
+  "note": "This is NOT a sandboxed demo like the other files in this folder -- this run actually created real, permanent actors in the live UE5 level (Content/L_ControllerTestRange.umap). It used Room7's already-committed, previously-validated JSON (Tools/room_geometry_Room7.json + Tools/encounter_population_Room7.json), not a fresh regeneration.",
+  "room_id": "Room7",
+  "room_shell": {
+    "label": "RoomShell_ROOM7",
+    "location": {"x": 31473.6, "y": -6270.0, "z": 582.0001},
+    "offset_basis": "31473.6 = live-queried max_x across all 7 existing rooms (RoomShell_ROOM6 = 26223.60) + 5250.0 margin, same convention used for Room3-Room6. Y=-6270.0 matches the Room4A/4B/Room5/Room6 row. Z=582.0001 matches every other room's standing-height convention."
+  },
+  "steps_run": [
+    {
+      "step": "import_room_geometry.py --room Room7",
+      "source_json": "Tools/room_geometry_Room7.json (already committed, not regenerated)",
+      "result": "removed 0 old floor/wall/marker actor(s) (fresh room), placed 7 floor(s), 1 wall(s), 11 spawn marker(s), final_x=33853.6"
+    },
+    {
+      "step": "spawn_encounter_actors.py --room Room7",
+      "source_json": "Tools/encounter_population_Room7.json (already committed, not regenerated)",
+      "result": "removed 0 previously-spawned enemy actor(s), spawned 31 enemy actor(s), skipped 2 pickup marker(s) (no pickup actor class exists in the project yet), 0 empty markers, 0 markers not found"
+    }
+  ],
+  "verification": {
+    "bbox": {"x": [31473.60, 34133.60], "y": [-6420.00, -6120.00]},
+    "overlap_check_vs_all_6_other_rooms": "clear (no bbox overlap with Room1, Room2, Room3, Room4A, Room4B, Room5, or Room6)",
+    "actor_counts": {"floors": 7, "walls": 1, "markers": 11, "spawned_enemies": 31},
+    "expected_from_json": {"floors_and_arenas_and_ledges_and_dropdown": 7, "wall_jump_shafts": 1, "spawn_markers": 11, "enemy_count_sum": 31, "pickup_markers_skipped": 2},
+    "match": true,
+    "existing_exit_trigger": "ExitTrigger_ROOM6_to_next already had next_room_id=Room7 from the earlier room build -- Room7 itself has no exit trigger of its own yet (not requested this pass)."
+  },
+  "known_gap_vs_golden_room_visual_standard": "Room7's floors/walls are plain grey /Engine/BasicShapes/Cube.Cube meshes -- no LongWalkway/LongWalkwayTopdown sprite tiles, no CityRubbleDebris, no background city art, no overhead cable, no fused floating-platform Blueprint. This is a functional/geometric blockout proof, not an art-dressed room like Room1-Room6. See docs/golden_room_script_README.md for the full explanation of what these scripts do and don't do."
+}

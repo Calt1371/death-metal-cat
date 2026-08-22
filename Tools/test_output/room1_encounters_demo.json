@@ -1,0 +1,28 @@
+{
+  "room_id": "Room1",
+  "populations": [
+    {
+      "marker_id": "sm_001",
+      "population": "empty",
+      "rationale": "Tier 1 opening room should be forgiving and introductory. Leaving the first EnemySpawn empty eases the player in, giving them space to learn movement before facing any threat. This intentional breathing room means Gnarly Rank stays at zero here, which is correct -- the rank build-and-reset rhythm hasn't begun yet and shouldn't be forced in the very first room."
+    },
+    {
+      "marker_id": "sm_002",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "Tier 1 is the highest-priority window for pickups since the player has the smallest health and attribute buffer. Placing a Generic pickup early rewards exploration and helps establish that the player should seek out pickup slots, setting up the expectation before combat pressure begins."
+    },
+    {
+      "marker_id": "sm_003",
+      "population": "enemy",
+      "enemy_count": 1,
+      "rationale": "A single enemy at this marker gives the player their first combat encounter in a controlled, low-stakes context. One enemy at tier 1's ceiling of 1 is exactly right: it introduces the core melee-contact-damage threat without overwhelming, and generates a tiny first opportunity to begin building Gnarly Rank before the room ends."
+    },
+    {
+      "marker_id": "sm_004",
+      "population": "pickup",
+      "pickup_type": "Generic",
+      "rationale": "A second Generic pickup placed after the lone combat encounter acts as a small reward for clearing the enemy and reinforces the tier 1 design philosophy of generosity. Because Gnarly Rank resets on taking a hit, having a buffer pickup here means a player who took damage during their first fight is not left in a deficit entering Room 2."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "room": "Room3",
+  "biome": "AssassinCity",
+  "status": "in_progress",
+  "skipped": true,
+  "detail": "SKIPPED -- Room3 marked in_progress, not stress-tested"
+}

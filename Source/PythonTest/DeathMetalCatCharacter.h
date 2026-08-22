@@ -115,8 +115,30 @@ protected:
 	/** Timer callback: ends the brief post-wall-jump reduced-authority commitment window, restoring full air control (see HandleJump/HandleMoveRight). */
 	void ClearWallJumpCommitmentWindow();
 
-	/** Bound to the SwordAttackAction's Started event; plays the swing and arms the hitbox timers. */
+	/**
+	 * Bound to the SwordAttackAction's Started event. Branches to one of four attack variants
+	 * based on current state, all sharing the same SwordHitbox/damage pipeline:
+	 *  - Airborne + holding Down -> The Spinny Down Thing (ground-pound style downward attack).
+	 *  - Airborne, not holding Down -> Double Whammy (airborne sword swing).
+	 *  - Grounded + holding Back (opposite of current facing) -> Uppy (launches the hit enemy up).
+	 *  - Grounded, no modifier -> the 3-hit ground combo (see StartSwordComboStage).
+	 * While already mid-swing (bIsAttacking), a repress only ever buffers into the ground combo
+	 * (see bComboInputBuffered) -- it never re-triggers Uppy/Double Whammy/Spinny Down, since those
+	 * are one-off moves, not chain participants.
+	 */
 	void HandleSwordAttack(const FInputActionValue& Value);
+
+	/** Starts ground combo stage StageIndex (0=sword-v2, 1=sword_2, 2=sword_3) -- see SwordComboIndex. */
+	void StartSwordComboStage(int32 StageIndex);
+
+	/** Starts Uppy: grounded forward swing that also launches the hit enemy upward on a landed hit -- see UppyLaunchVelocityZ. */
+	void StartUppy();
+
+	/** Starts Double Whammy: airborne forward swing, otherwise identical to a ground combo swing. */
+	void StartDoubleWhammy();
+
+	/** Starts The Spinny Down Thing: airborne downward swing with a small hitbox below Cayde and a fast forced descent -- see SpinnyDownFallSpeed. */
+	void StartSpinnyDown();
 
 	/** Timer callback: enables the sword hitbox's collision and arms the disable timer. */
 	void EnableSwordHitbox();
@@ -124,8 +146,17 @@ protected:
 	/** Timer callback: disables the sword hitbox's collision. */
 	void DisableSwordHitbox();
 
-	/** Timer callback: ends the attacking state, allowing another attack to be triggered. */
+	/**
+	 * Timer callback: ends the attacking state. For a ground-combo stage (bLastAttackWasComboEligible),
+	 * either immediately advances into the next buffered stage (bComboInputBuffered, covers "pressed
+	 * again during recovery frames") or opens the SwordComboBufferWindow for a following press (covers
+	 * "pressed again within the window after it finishes") -- see HandleSwordAttack/SwordComboIndex.
+	 * Uppy/Double Whammy/Spinny Down never open the combo window; they're one-off moves.
+	 */
 	void ClearAttackState();
+
+	/** Timer callback: closes the ground-combo buffered-input window and resets SwordComboIndex back to the base swing. */
+	void ResetSwordComboWindow();
 
 	/** Bound to SwordHitbox's OnComponentBeginOverlap: rolls a damage tier, applies damage via UGameplayStatics::ApplyDamage, and spawns a floating damage number on whatever it hits. */
 	UFUNCTION()
@@ -167,13 +198,14 @@ protected:
 	void FireShotTrace();
 
 	/**
-	 * Sets the sustained hold-fire loop's flipbook to AirDownShotFlipbook (bAirborne true) or
-	 * HoldFireFlipbook (false), only reassigning/restarting playback when it actually needs to
-	 * change. Called once from BeginHoldFireLoop and again on every repeat shot from
-	 * FireShotTrace, so transitioning airborne state mid-hold (e.g. jumping while already firing)
-	 * updates the loop on the next shot rather than being stuck with whichever animation started it.
+	 * Sets the sustained hold-fire loop's flipbook to HoldFireFlipbook (grounded), AirDownShotFlipbook
+	 * (airborne, not holding Down), or AirShotAngledFlipbook (airborne AND holding Down) -- only
+	 * reassigning/restarting playback when it actually needs to change. Called once from
+	 * BeginHoldFireLoop and again on every repeat shot from FireShotTrace, so transitioning airborne
+	 * state OR the Down modifier mid-hold updates the loop on the next shot rather than being stuck
+	 * with whichever animation started it.
 	 */
-	void UpdateHoldFireFlipbook(bool bAirborne);
+	void UpdateHoldFireFlipbook(bool bAirborne, bool bAngled);
 
 	/**
 	 * Dante/DMC-style "float on shoot": called from FireShotTrace whenever a shot fires while
@@ -205,7 +237,52 @@ protected:
 	/** Timer callback: ends the fire-rate cooldown / shoot animation window, allowing another shot. */
 	void ClearShootingState();
 
-	/** Picks Idle/Walk/Run/Jump/Dodge/SwordAttack/Shoot based on current state, and flips the sprite to face travel direction. */
+	/** Bound to the AimDownAction's Started event: marks Down as held (drives the airborne angled-shot/Spinny-Down modifiers). */
+	void HandleAimDownStarted(const FInputActionValue& Value);
+
+	/** Bound to the AimDownAction's Completed/Canceled events: marks Down as released. */
+	void HandleAimDownReleased(const FInputActionValue& Value);
+
+	/**
+	 * Bound to the BlockAction's Started event. Ignored while dodging or dashing (mutually exclusive
+	 * movement states). While held, CanTakeDamage() reports false (same protection Dodge's i-frames
+	 * give -- full block, no partial, and TakeDamage's early-out means GnarlyRank isn't reset either)
+	 * and HandleMoveRight is locked out (a standing block, not a moving one).
+	 */
+	void HandleBlockStarted(const FInputActionValue& Value);
+
+	/** Bound to the BlockAction's Completed/Canceled events: ends the block immediately, no recovery lockout. */
+	void HandleBlockReleased(const FInputActionValue& Value);
+
+	/**
+	 * Bound to the InvulnDashAction's Started event. Ignored while dodging or blocking. Launches Cayde
+	 * FORWARD (toward current facing -- the opposite direction from Dodge's backward retreat) using
+	 * the same LaunchCharacter pattern Dodge's own impulse uses, and grants full invincibility for
+	 * InvulnDashDuration via the same shared bIsInvincible/IFrameTimerHandle/ClearInvincibility
+	 * mechanism Dodge and post-respawn invuln both already use. A separate ability from Dodge, not a
+	 * replacement -- both coexist with their own buttons.
+	 */
+	void HandleInvulnDash(const FInputActionValue& Value);
+
+	/** Timer callback: ends the dash movement/animation state (invincibility itself ends separately via ClearInvincibility, armed for the same duration). */
+	void ClearInvulnDashState();
+
+	/**
+	 * Called every Tick while bIsDashing: reasserts MoveComp->Velocity.X to
+	 * DashFacingSignAtStart * InvulnDashImpulseStrength (leaving Z untouched, so gravity still
+	 * applies normally if airborne). A single one-shot LaunchCharacter impulse (the original
+	 * implementation) is entirely at the mercy of CharacterMovementComponent's own per-mode
+	 * deceleration -- confirmed via direct measurement that the identical impulse covered ~129uu
+	 * grounded (GroundFriction/BrakingDecelerationWalking kill it almost immediately) vs ~669uu
+	 * airborne (5.2x farther, far weaker falling deceleration) -- neither matches "fixed-distance,
+	 * fixed-duration dash" from the spec, and the grounded case also visibly stopped moving well
+	 * before InvulnDashFlipbook finished playing. Reasserting a constant velocity every tick for
+	 * the whole window guarantees the same fixed distance (InvulnDashImpulseStrength *
+	 * InvulnDashDuration) regardless of movement mode.
+	 */
+	void UpdateInvulnDash();
+
+	/** Picks Idle/Walk/Run/Jump/Dodge/Dash/Block/SwordAttack/Shoot based on current state, and flips the sprite to face travel direction. */
 	void UpdateAnimation();
 
 	/**
@@ -367,15 +444,29 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
 	TObjectPtr<UInputAction> ShootAction;
 
+	/**
+	 * Digital (bool) action, held to signal "aiming down" -- drives the airborne angled-shot
+	 * (Gun Fire) and Spinny-Down (Sword Attack) directional modifiers. No standalone effect on its
+	 * own; this project has no vertical movement axis, so unlike "Back" (derived from the existing
+	 * MoveRightAction against current facing) there was nothing existing to reuse for "Down" --
+	 * added as its own held-modifier action rather than a movement-triggering button.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
+	TObjectPtr<UInputAction> AimDownAction;
+
+	/** Digital (bool) action, full block while held. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
+	TObjectPtr<UInputAction> BlockAction;
+
+	/** Digital (bool) action, triggers the invulnerable forward dash on press. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input")
+	TObjectPtr<UInputAction> InvulnDashAction;
+
 	// -- Movement --
 
 	/** Top horizontal move speed in uu/s; drives CharacterMovementComponent::MaxWalkSpeed. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement", meta = (ClampMin = "0"))
 	float MaxMoveSpeed = 600.f;
-
-	/** Horizontal speed (uu/s) at/above which the Run flipbook is used instead of Walk. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Movement", meta = (ClampMin = "0"))
-	float WalkSpeedThreshold = 300.f;
 
 	/**
 	 * Initial upward velocity (uu/s) applied by a regular jump -- drives
@@ -420,9 +511,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> IdleFlipbook;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
-	TObjectPtr<UPaperFlipbook> WalkFlipbook;
-
+	/**
+	 * Shown for any nonzero horizontal speed while grounded -- Walk was removed as a separate state
+	 * (it briefly flashed on-screen right at movement start before Run took over, and served no
+	 * purpose once Run's own art covers slow-to-fast movement fine on its own): Move input now goes
+	 * straight from Idle to Run with no intermediate state or speed threshold.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> RunFlipbook;
 
@@ -464,9 +558,59 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> WallSlideFlipbook;
 
-	/** Shown looping for the sustained hold-fire loop instead of HoldFireFlipbook whenever a shot fires while airborne -- see FireShotTrace/UpdateHoldFireFlipbook. */
+	/**
+	 * Shown looping for the sustained hold-fire loop instead of HoldFireFlipbook whenever a shot
+	 * fires while airborne WITHOUT holding Down -- see FireShotTrace/UpdateHoldFireFlipbook. Despite
+	 * the name (kept for Blueprint-reference stability), this is now the "regular" airborne shot,
+	 * firing horizontally like the grounded shot -- AirShotAngledFlipbook below is the one that
+	 * actually fires at a fixed 45 degrees down. See AirShotAngledFlipbook's doc comment for why the
+	 * angle moved.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> AirDownShotFlipbook;
+
+	/**
+	 * Shown looping instead of AirDownShotFlipbook whenever an airborne shot fires WHILE holding
+	 * Down (or Forward+Down) -- fires at a fixed 45-degrees-down angle. Before this was added, EVERY
+	 * airborne shot fired at that fixed 45-degree angle unconditionally; since the assignment
+	 * explicitly distinguishes "the normal air-shot" from this "instead of" variant, the default
+	 * airborne trajectory was changed to horizontal (matching the grounded shot) so the two are
+	 * actually distinct -- see FireShotTrace.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> AirShotAngledFlipbook;
+
+	/** Ground combo stage 2 (chained from the base swing) -- see SwordComboIndex/StartSwordComboStage. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> SwordCombo2Flipbook;
+
+	/** Ground combo stage 3 (chained from stage 2, loops back to the base swing after) -- see SwordComboIndex/StartSwordComboStage. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> SwordCombo3Flipbook;
+
+	/** Grounded forward swing triggered by holding Back + Sword Attack -- launches the hit enemy upward on a landed hit. See StartUppy/UppyLaunchVelocityZ. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> UppyFlipbook;
+
+	/** Airborne forward swing (Sword Attack while airborne, not holding Down). See StartDoubleWhammy. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> DoubleWhammyFlipbook;
+
+	/** Airborne downward swing (Sword Attack while airborne AND holding Down) -- ground-pound style fast descent. See StartSpinnyDown/SpinnyDownFallSpeed. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> SpinnyDownFlipbook;
+
+	/** Shown looping while bIsBlocking is true. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> BlockFlipbook;
+
+	/**
+	 * Shown once for the duration of the invuln dash. This sheet's after-image/speed-trail effect is
+	 * authored directly into its frames -- played as-is via normal SetFlipbook/PlayFromStart, no
+	 * extra ghost-trail code layered on top, so the effect stays exactly as authored.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> InvulnDashFlipbook;
 
 	// -- Dodge --
 
@@ -507,9 +651,36 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Dodge")
 	bool bIsDodging = false;
 
-	/** Returns false while invincibility frames are active; TakeDamage() checks this and ignores any hit entirely while it's false. */
+	/** Returns false while invincibility frames OR a block are active; TakeDamage() checks this and ignores any hit entirely while it's false. */
 	UFUNCTION(BlueprintCallable, Category = "Dodge")
 	bool CanTakeDamage() const;
+
+	// -- Block --
+
+	/** True while the Block input is held. Full block (no partial): CanTakeDamage() returns false the whole time, same protection Dodge's i-frames give -- see HandleBlockStarted/CanTakeDamage. */
+	UPROPERTY(BlueprintReadOnly, Category = "Block")
+	bool bIsBlocking = false;
+
+	// -- Invuln Dash --
+
+	/** True for InvulnDashDuration seconds after a dash starts (movement/animation window; invincibility itself is tracked via the shared bIsInvincible flag). */
+	UPROPERTY(BlueprintReadOnly, Category = "InvulnDash")
+	bool bIsDashing = false;
+
+	/** Forward velocity (uu/s) applied by the invuln dash, via LaunchCharacter -- same impulse-based approach as DodgeImpulseStrength, just toward facing instead of away from it. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "InvulnDash", meta = (ClampMin = "0"))
+	float InvulnDashImpulseStrength = 1600.f;
+
+	/**
+	 * Minimum floor (seconds) for how long the dash's movement/animation state AND its invincibility
+	 * both last -- HandleInvulnDash actually arms both timers for
+	 * max(InvulnDashDuration, InvulnDashFlipbook->GetTotalDuration() + 0.05s), so retiming the
+	 * flipbook's fps/frame count later can never silently cut it short again the way a fixed value
+	 * did before (25 frames @ 30fps = 0.833s of animation was getting cut off at the old fixed
+	 * 0.3s). Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "InvulnDash", meta = (ClampMin = "0"))
+	float InvulnDashDuration = 0.3f;
 
 	// -- Wall Slide / Wall Jump --
 
@@ -729,37 +900,69 @@ public:
 
 	/**
 	 * Total lockout duration of the attack, in seconds -- doubles as the cooldown, since
-	 * HandleSwordAttack ignores re-triggers for as long as bIsAttacking is true. Placeholder
-	 * value, tune freely. Grounded against FB_DeathMetalCat_SwordAttack's actual length
-	 * (4 frames @ 13fps =~ 0.31s) with a little recovery margin added on top.
+	 * HandleSwordAttack ignores re-triggers for as long as bIsAttacking is true. This (along with
+	 * HitboxActiveDelay/HitboxActiveDuration below) is a FIXED REAL-TIME value, NOT driven by the
+	 * sword flipbooks' own frame/notify progress -- when all six sword flipbooks were slowed to 75%
+	 * speed, this had to be scaled by the same 1/0.75 factor to keep the hitbox window in sync with
+	 * the now-slower swing (confirmed via code review this wasn't already frame-driven, so slowing
+	 * the animation alone would NOT have carried hit timing along with it). Placeholder value, tune
+	 * freely.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
-	float AttackDuration = 0.4f;
+	float AttackDuration = 0.5333333f;
 
 	/**
 	 * Seconds after the attack starts before the hitbox turns on -- the wind-up frames
 	 * (SwordAttack_01/02) shouldn't count as active hit frames. Not explicitly requested as a
 	 * separate tunable, but needed to implement "middle portion only" -- see also
-	 * HitboxActiveDuration. Placeholder value, tune freely.
+	 * HitboxActiveDuration. Scaled by 1/0.75 along with AttackDuration when the sword flipbooks were
+	 * slowed to 75% speed -- see AttackDuration's doc comment. Placeholder value, tune freely.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
-	float HitboxActiveDelay = 0.15f;
+	float HitboxActiveDelay = 0.2f;
 
 	/**
 	 * Seconds the hitbox stays enabled once active, roughly covering the strike frame
 	 * (SwordAttack_03, the one with the slash-swirl VFX) without extending into full recovery.
-	 * Placeholder value, tune freely.
+	 * Scaled by 1/0.75 along with AttackDuration when the sword flipbooks were slowed to 75% speed
+	 * -- see AttackDuration's doc comment. Placeholder value, tune freely.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
-	float HitboxActiveDuration = 0.12f;
+	float HitboxActiveDuration = 0.16f;
 
 	/** True for AttackDuration seconds after a sword attack starts; blocks re-triggering. */
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	bool bIsAttacking = false;
 
-	/** Base damage a sword hit deals, before RollDamage's tier multiplier. Placeholder value, tune freely. */
+	/** Base damage a sword hit deals, before RollDamage's tier multiplier. All ground-combo stages, Uppy, and Double Whammy use this same base -- no per-stage escalation (see SwordComboIndex). Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float SwordBaseDamage = 20.f;
+
+	/**
+	 * Named, easily-tunable buffered-input window (seconds) for the 3-hit ground sword combo: a
+	 * Sword Attack press this soon after the current stage finishes (or during its recovery frames)
+	 * chains into the next stage instead of resetting to the base swing. 0.4s default per spec --
+	 * likely needs feel-tuning once playtested. See HandleSwordAttack/ClearAttackState/SwordComboIndex.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float SwordComboBufferWindow = 0.4f;
+
+	/**
+	 * Upward velocity (uu/s) applied to an enemy hit by Uppy, via LaunchCharacter, on top of normal
+	 * damage. ~450 gives roughly a second of hang time at default gravity -- enough to matter for a
+	 * future juggle/air-combo follow-up (Double Whammy / Spinny Down) without being a full launch.
+	 * Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float UppyLaunchVelocityZ = 450.f;
+
+	/**
+	 * Downward velocity (uu/s) forced onto Cayde for the duration of The Spinny Down Thing -- a
+	 * ground-pound-style fast descent, clearly faster than a normal fall. Placeholder value (no
+	 * spec'd exact speed given), tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
+	float SpinnyDownFallSpeed = 1500.f;
 
 	// -- Gun Fire --
 
@@ -897,6 +1100,37 @@ private:
 	FTimerHandle SwordHitboxEnableTimerHandle;
 	FTimerHandle SwordHitboxDisableTimerHandle;
 	FTimerHandle SwordAttackEndTimerHandle;
+
+	/** True while the AimDownAction is physically held -- drives the airborne angled-shot (Gun Fire) and Spinny-Down (Sword Attack) modifiers. */
+	bool bIsHoldingDownInput = false;
+
+	/** Which ground-combo stage plays next (0=base swing, 1=sword_2, 2=sword_3) -- see StartSwordComboStage/HandleSwordAttack. Only meaningful for the ground combo; Uppy/Double Whammy/Spinny Down don't touch it. */
+	int32 SwordComboIndex = 0;
+
+	/** True during the SwordComboBufferWindow after a ground-combo stage finishes, without a repress yet -- see ClearAttackState/ResetSwordComboWindow. */
+	bool bSwordComboWindowOpen = false;
+
+	/** True if Sword Attack was pressed again while still mid-swing on a ground-combo stage -- consumed (and the next stage started) by ClearAttackState the moment the current stage ends. */
+	bool bComboInputBuffered = false;
+
+	/** True only while the currently-playing attack is a ground-combo stage (StartSwordComboStage) -- false for Uppy/Double Whammy/Spinny Down, so ClearAttackState knows not to open the combo window or honor a buffered press for those one-off moves. */
+	bool bLastAttackWasComboEligible = false;
+
+	/** True only while the currently-playing attack is Uppy -- OnSwordHitboxBeginOverlap checks this to additionally LaunchCharacter the hit enemy upward on top of normal damage. */
+	bool bCurrentAttackLaunchesTarget = false;
+
+	/** True only while The Spinny Down Thing is playing -- SwordHitbox sits below Cayde instead of forward for the duration; restored to its normal forward-mirrored position in ClearAttackState. */
+	bool bIsSpinnyDownAttackActive = false;
+
+	FTimerHandle SwordComboWindowTimerHandle;
+
+	/** Facing sign (matches Scale.X's sign convention) captured the instant a block starts, so UpdateAnimation can hold the sprite facing that direction for as long as Block is held, same reasoning as DodgeFacingSignAtStart. */
+	float BlockFacingSignAtStart = 1.f;
+
+	/** Facing sign (matches Scale.X's sign convention) captured the instant a dash starts, so UpdateAnimation can hold the sprite facing that direction for the whole dash, same reasoning as DodgeFacingSignAtStart. */
+	float DashFacingSignAtStart = 1.f;
+
+	FTimerHandle InvulnDashTimerHandle;
 
 	FTimerHandle ShootTimerHandle;
 	FTimerHandle ShootDrawTimerHandle;

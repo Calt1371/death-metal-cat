@@ -1,7 +1,9 @@
 #include "DeathMetalCatCharacter.h"
 
 #include "PaperFlipbookComponent.h"
+#include "PaperFlipbook.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -182,6 +184,25 @@ void ADeathMetalCatCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 			EnhancedInput->BindAction(ShootAction, ETriggerEvent::Completed, this, &ADeathMetalCatCharacter::HandleShootReleased);
 			EnhancedInput->BindAction(ShootAction, ETriggerEvent::Canceled, this, &ADeathMetalCatCharacter::HandleShootReleased);
 		}
+
+		if (AimDownAction)
+		{
+			EnhancedInput->BindAction(AimDownAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleAimDownStarted);
+			EnhancedInput->BindAction(AimDownAction, ETriggerEvent::Completed, this, &ADeathMetalCatCharacter::HandleAimDownReleased);
+			EnhancedInput->BindAction(AimDownAction, ETriggerEvent::Canceled, this, &ADeathMetalCatCharacter::HandleAimDownReleased);
+		}
+
+		if (BlockAction)
+		{
+			EnhancedInput->BindAction(BlockAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleBlockStarted);
+			EnhancedInput->BindAction(BlockAction, ETriggerEvent::Completed, this, &ADeathMetalCatCharacter::HandleBlockReleased);
+			EnhancedInput->BindAction(BlockAction, ETriggerEvent::Canceled, this, &ADeathMetalCatCharacter::HandleBlockReleased);
+		}
+
+		if (InvulnDashAction)
+		{
+			EnhancedInput->BindAction(InvulnDashAction, ETriggerEvent::Started, this, &ADeathMetalCatCharacter::HandleInvulnDash);
+		}
 	}
 }
 
@@ -191,6 +212,14 @@ void ADeathMetalCatCharacter::HandleMoveRight(const FInputActionValue& Value)
 	// which direction the player is holding toward even on ticks where that input doesn't
 	// actually get to move the character (e.g. during the wall-jump input lockout just below).
 	LastMoveRightAxisValue = Value.Get<float>();
+
+	// Standing block: no movement at all while Block is held, regardless of airborne state --
+	// unlike the Shoot/Attack guard below, this is a deliberate full lockout, not just a
+	// grounded-only plant.
+	if (bIsBlocking)
+	{
+		return;
+	}
 
 	// Grounded + holding Shoot, or grounded + mid sword-swing: plant and ignore movement input --
 	// you can't realistically run while firing a held weapon or swinging for power. Airborne is
@@ -237,9 +266,10 @@ void ADeathMetalCatCharacter::HandleJump(const FInputActionValue& Value)
 
 void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
 {
-	if (bIsDodging)
+	if (bIsDodging || bIsBlocking || bIsDashing)
 	{
-		// Ignore re-triggers while already mid-dodge rather than restarting/stacking timers.
+		// Ignore re-triggers while already mid-dodge, and don't stack with Block/Dash -- these
+		// three are mutually exclusive movement states.
 		return;
 	}
 
@@ -360,6 +390,112 @@ void ADeathMetalCatCharacter::ClearWallJumpCommitmentWindow()
 	bInWallJumpCommitmentWindow = false;
 }
 
+void ADeathMetalCatCharacter::HandleAimDownStarted(const FInputActionValue& Value)
+{
+	bIsHoldingDownInput = true;
+}
+
+void ADeathMetalCatCharacter::HandleAimDownReleased(const FInputActionValue& Value)
+{
+	bIsHoldingDownInput = false;
+}
+
+void ADeathMetalCatCharacter::HandleBlockStarted(const FInputActionValue& Value)
+{
+	if (bIsDodging || bIsDashing)
+	{
+		// Don't stack with Dodge/Dash -- mutually exclusive movement states.
+		return;
+	}
+
+	bIsBlocking = true;
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		BlockFacingSignAtStart = (SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+
+		if (BlockFlipbook)
+		{
+			SpriteComp->SetFlipbook(BlockFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->Play();
+			CurrentFlipbook = BlockFlipbook;
+		}
+	}
+}
+
+void ADeathMetalCatCharacter::HandleBlockReleased(const FInputActionValue& Value)
+{
+	// Immediate: no recovery lockout on release, per spec.
+	bIsBlocking = false;
+}
+
+void ADeathMetalCatCharacter::HandleInvulnDash(const FInputActionValue& Value)
+{
+	if (bIsDodging || bIsBlocking || bIsDashing)
+	{
+		// Don't stack with Dodge/Block, and ignore a repress mid-dash.
+		return;
+	}
+
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+	DashFacingSignAtStart = FacingSign;
+
+	if (SpriteComp && InvulnDashFlipbook)
+	{
+		SpriteComp->SetFlipbook(InvulnDashFlipbook);
+		SpriteComp->SetLooping(false);
+		SpriteComp->PlayFromStart();
+		CurrentFlipbook = InvulnDashFlipbook;
+	}
+
+	// Forward burst (toward facing) -- the opposite direction from Dodge's backward retreat.
+	// A CONSTANT velocity sustained for the whole duration (reasserted every tick by
+	// UpdateInvulnDash), not a single decaying LaunchCharacter impulse -- see UpdateInvulnDash's
+	// doc comment for why: a one-shot impulse covered wildly different distances grounded vs.
+	// airborne (~129uu vs ~669uu for the same impulse, confirmed via direct measurement), which
+	// doesn't match "fixed-distance, fixed-duration dash." Z is left untouched here (and every
+	// tick after) so gravity still applies normally if the dash starts mid-air.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		FVector Velocity = MoveComp->Velocity;
+		Velocity.X = FacingSign * InvulnDashImpulseStrength;
+		MoveComp->Velocity = Velocity;
+	}
+
+	bIsDashing = true;
+	bIsInvincible = true;
+
+	// Never let the state end before the flipbook (eyes turning red -> dash -> after-image trail)
+	// has actually finished playing, regardless of how InvulnDashDuration or the flipbook's own fps
+	// get retuned later -- see InvulnDashDuration's doc comment.
+	float EffectiveDashDuration = InvulnDashDuration;
+	if (InvulnDashFlipbook)
+	{
+		EffectiveDashDuration = FMath::Max(EffectiveDashDuration, InvulnDashFlipbook->GetTotalDuration() + 0.05f);
+	}
+
+	GetWorldTimerManager().SetTimer(InvulnDashTimerHandle, this, &ADeathMetalCatCharacter::ClearInvulnDashState, EffectiveDashDuration, false);
+	// Shared with Dodge/post-respawn invuln -- see their own comments on this same mechanism.
+	GetWorldTimerManager().SetTimer(IFrameTimerHandle, this, &ADeathMetalCatCharacter::ClearInvincibility, EffectiveDashDuration, false);
+}
+
+void ADeathMetalCatCharacter::ClearInvulnDashState()
+{
+	bIsDashing = false;
+}
+
+void ADeathMetalCatCharacter::UpdateInvulnDash()
+{
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		FVector Velocity = MoveComp->Velocity;
+		Velocity.X = DashFacingSignAtStart * InvulnDashImpulseStrength;
+		MoveComp->Velocity = Velocity;
+	}
+}
+
 bool ADeathMetalCatCharacter::DetectWallForSlide(float& OutWallSign) const
 {
 	if (FMath::Abs(LastMoveRightAxisValue) < KINDA_SMALL_NUMBER)
@@ -418,7 +554,7 @@ void ADeathMetalCatCharacter::UpdateWallSlide()
 
 bool ADeathMetalCatCharacter::CanTakeDamage() const
 {
-	return !bIsInvincible;
+	return !bIsInvincible && !bIsBlocking;
 }
 
 float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -846,59 +982,231 @@ void ADeathMetalCatCharacter::UpdateJumpDistanceTest()
 	}
 }
 
+namespace
+{
+	// SwordHitbox's fixed vertical offset (root-local) while The Spinny Down Thing is active --
+	// "a small area below Cayde", restored to 0 (forward positioning) in ClearAttackState.
+	constexpr float SpinnyDownHitboxZOffset = -90.f;
+
+	// Mirrors SwordHitbox to whichever side the character is currently facing -- shared by every
+	// forward-facing sword variant (ground combo stages, Uppy, Double Whammy). Only the sign of the
+	// offset changes -- the box's extent (shape/size) is symmetric either way. FacingSign matches
+	// Scale.X's sign directly (Scale.X >= 0 -> facing right, FacingSign=+1; Scale.X < 0 -> facing
+	// left, FacingSign=-1) -- confirmed correct via a direct visual cross-check (a debug arrow drawn
+	// as a pure world-space offset, verified to point the same way the sprite visibly faces on
+	// screen).
+	//
+	// BUT: SwordHitbox is parented to RootComponent, and its offset is applied via
+	// SetRelativeLocation -- a ROOT-LOCAL offset, not a world-space one. That's only equivalent to a
+	// world-space offset if the root/actor's own rotation is identity. The old verification of this
+	// line only ever checked the logged RelativeLocation/WorldLocation numbers against the EXPECTED
+	// sign convention (self-consistent, since the log and the convention comment were written by the
+	// same assumption) -- it never cross-checked against an independently-confirmed visual
+	// reference. The arrow test did exactly that and showed the hitbox landing on the opposite side
+	// from the visibly-correct facing, which the root-local-vs-world-space distinction fully
+	// explains: this character's placed/spawned actor rotation isn't identity, so root-local +X
+	// isn't world +X here. Sign is inverted below to compensate. This is correct for THIS
+	// character's current spawn rotation specifically, not a universal geometric law -- if the
+	// spawn rotation ever changes, this may need re-flipping (or switching SwordHitbox to a
+	// world-space SetWorldLocation offset, immune to root rotation, would remove this fragility
+	// entirely).
+	void PositionSwordHitboxForward(UBoxComponent* SwordHitbox, float FacingSign)
+	{
+		if (!SwordHitbox)
+		{
+			return;
+		}
+		FVector Loc = SwordHitbox->GetRelativeLocation();
+		Loc.X = -FacingSign * FMath::Abs(Loc.X);
+		Loc.Z = 0.f;
+		SwordHitbox->SetRelativeLocation(Loc);
+	}
+}
+
 void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 {
-	if (bIsAttacking)
+	if (bIsDashing)
 	{
-		// Ignore re-triggers while already mid-swing rather than restarting/stacking timers.
+		// Committed burst move -- don't interrupt it with an attack.
 		return;
 	}
 
+	if (bIsAttacking)
+	{
+		// Only ever buffers into the next ground-combo stage (see ClearAttackState) -- Uppy/Double
+		// Whammy/Spinny Down are one-off moves, not chain participants, so a repress mid-swing on
+		// those is simply ignored, same as the old single-swing behavior.
+		if (bLastAttackWasComboEligible)
+		{
+			bComboInputBuffered = true;
+		}
+		return;
+	}
+
+	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	const bool bAirborne = MoveComp && MoveComp->IsFalling();
+
+	if (bAirborne)
+	{
+		// Airborne branch only ever depends on whether Down is held -- "Down, or Forward+Down" per
+		// spec, i.e. the horizontal axis doesn't matter, only Down's own held state.
+		if (bIsHoldingDownInput)
+		{
+			StartSpinnyDown();
+		}
+		else
+		{
+			StartDoubleWhammy();
+		}
+		return;
+	}
+
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+	const bool bHoldingBack = FMath::Abs(LastMoveRightAxisValue) > KINDA_SMALL_NUMBER
+		&& FMath::Sign(LastMoveRightAxisValue) != FacingSign;
+
+	if (bHoldingBack)
+	{
+		StartUppy();
+		return;
+	}
+
+	// Base ground combo: advance a stage if the buffered window is still open (a press that arrived
+	// after the previous stage fully finished, within SwordComboBufferWindow -- see
+	// ClearAttackState), otherwise a fresh press with no recent chain restarts at the base swing.
+	GetWorldTimerManager().ClearTimer(SwordComboWindowTimerHandle);
+	SwordComboIndex = bSwordComboWindowOpen ? (SwordComboIndex + 1) % 3 : 0;
+	bSwordComboWindowOpen = false;
+	StartSwordComboStage(SwordComboIndex);
+}
+
+void ADeathMetalCatCharacter::StartSwordComboStage(int32 StageIndex)
+{
 	bIsAttacking = true;
+	bLastAttackWasComboEligible = true;
+	bCurrentAttackLaunchesTarget = false;
+	bIsSpinnyDownAttackActive = false;
+
+	// 0=sword-v2 (base swing), 1=sword_2, 2=sword_3 -- no damage escalation per stage, see SwordBaseDamage.
+	UPaperFlipbook* StageFlipbook = SwordAttackFlipbook;
+	if (StageIndex == 1)
+	{
+		StageFlipbook = SwordCombo2Flipbook;
+	}
+	else if (StageIndex == 2)
+	{
+		StageFlipbook = SwordCombo3Flipbook;
+	}
 
 	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
 	{
-		if (SwordAttackFlipbook)
+		if (StageFlipbook)
 		{
-			SpriteComp->SetFlipbook(SwordAttackFlipbook);
+			SpriteComp->SetFlipbook(StageFlipbook);
 			SpriteComp->SetLooping(false);
 			SpriteComp->PlayFromStart();
-			CurrentFlipbook = SwordAttackFlipbook;
+			CurrentFlipbook = StageFlipbook;
 		}
 
-		// Mirror the hitbox to whichever side the character is currently facing. Only the sign
-		// of the offset changes -- the box's extent (shape/size) is symmetric either way.
-		// FacingSign matches Scale.X's sign directly (Scale.X >= 0 -> facing right,
-		// FacingSign=+1; Scale.X < 0 -> facing left, FacingSign=-1) -- confirmed correct via a
-		// direct visual cross-check (a debug arrow drawn as a pure world-space offset, verified
-		// to point the same way the sprite visibly faces on screen).
-		//
-		// BUT: SwordHitbox is parented to RootComponent, and its offset is applied via
-		// SetRelativeLocation -- a ROOT-LOCAL offset, not a world-space one. That's only
-		// equivalent to a world-space offset if the root/actor's own rotation is identity. The
-		// old verification of this line only ever checked the logged RelativeLocation/WorldLocation
-		// numbers against the EXPECTED sign convention (self-consistent, since the log and the
-		// convention comment were written by the same assumption) -- it never cross-checked
-		// against an independently-confirmed visual reference. The arrow test did exactly that
-		// and showed the hitbox landing on the opposite side from the visibly-correct facing,
-		// which the root-local-vs-world-space distinction fully explains: this character's
-		// placed/spawned actor rotation isn't identity, so root-local +X isn't world +X here.
-		// Sign is inverted below to compensate. This is correct for THIS character's current
-		// spawn rotation specifically, not a universal geometric law -- if the spawn rotation
-		// ever changes, this may need re-flipping (or switching SwordHitbox to a world-space
-		// SetWorldLocation offset, immune to root rotation, would remove this fragility entirely).
-		if (SwordHitbox)
+		const float FacingSign = (SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+		PositionSwordHitboxForward(SwordHitbox, FacingSign);
+	}
+
+	// Same timing for all three stages -- the spec didn't call for per-stage tuning, and reusing
+	// these keeps the combo's first pass low-risk; retune per-stage if playtesting calls for it.
+	GetWorldTimerManager().SetTimer(SwordHitboxEnableTimerHandle, this, &ADeathMetalCatCharacter::EnableSwordHitbox, HitboxActiveDelay, false);
+	GetWorldTimerManager().SetTimer(SwordAttackEndTimerHandle, this, &ADeathMetalCatCharacter::ClearAttackState, AttackDuration, false);
+}
+
+void ADeathMetalCatCharacter::StartUppy()
+{
+	bIsAttacking = true;
+	bLastAttackWasComboEligible = false;
+	bCurrentAttackLaunchesTarget = true;
+	bIsSpinnyDownAttackActive = false;
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		if (UppyFlipbook)
 		{
-			const float CurrentScaleX = SpriteComp->GetRelativeScale3D().X;
-			const float FacingSign = (CurrentScaleX < 0.f) ? -1.f : 1.f;
-			FVector Loc = SwordHitbox->GetRelativeLocation();
-			Loc.X = -FacingSign * FMath::Abs(Loc.X);
-			SwordHitbox->SetRelativeLocation(Loc);
+			SpriteComp->SetFlipbook(UppyFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = UppyFlipbook;
+		}
+
+		const float FacingSign = (SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+		PositionSwordHitboxForward(SwordHitbox, FacingSign);
+	}
+
+	GetWorldTimerManager().SetTimer(SwordHitboxEnableTimerHandle, this, &ADeathMetalCatCharacter::EnableSwordHitbox, HitboxActiveDelay, false);
+	GetWorldTimerManager().SetTimer(SwordAttackEndTimerHandle, this, &ADeathMetalCatCharacter::ClearAttackState, AttackDuration, false);
+}
+
+void ADeathMetalCatCharacter::StartDoubleWhammy()
+{
+	bIsAttacking = true;
+	bLastAttackWasComboEligible = false;
+	bCurrentAttackLaunchesTarget = false;
+	bIsSpinnyDownAttackActive = false;
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		if (DoubleWhammyFlipbook)
+		{
+			SpriteComp->SetFlipbook(DoubleWhammyFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = DoubleWhammyFlipbook;
+		}
+
+		const float FacingSign = (SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
+		PositionSwordHitboxForward(SwordHitbox, FacingSign);
+	}
+
+	// Same base damage/hitbox timing as a grounded swing -- see SwordBaseDamage/HitboxActiveDelay/
+	// HitboxActiveDuration/AttackDuration; nothing in testing so far suggested this needs its own
+	// timing, but it's untested feel-wise (see summary report).
+	GetWorldTimerManager().SetTimer(SwordHitboxEnableTimerHandle, this, &ADeathMetalCatCharacter::EnableSwordHitbox, HitboxActiveDelay, false);
+	GetWorldTimerManager().SetTimer(SwordAttackEndTimerHandle, this, &ADeathMetalCatCharacter::ClearAttackState, AttackDuration, false);
+}
+
+void ADeathMetalCatCharacter::StartSpinnyDown()
+{
+	bIsAttacking = true;
+	bLastAttackWasComboEligible = false;
+	bCurrentAttackLaunchesTarget = false;
+	bIsSpinnyDownAttackActive = true;
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		if (SpinnyDownFlipbook)
+		{
+			SpriteComp->SetFlipbook(SpinnyDownFlipbook);
+			SpriteComp->SetLooping(false);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = SpinnyDownFlipbook;
 		}
 	}
 
-	// Hitbox turns on partway through the swing (skipping wind-up) and off again before the
-	// swing fully ends (skipping recovery) -- see HitboxActiveDelay/HitboxActiveDuration comments.
+	if (SwordHitbox)
+	{
+		// Small area directly below Cayde, not mirrored by facing (below doesn't depend on facing).
+		FVector Loc = SwordHitbox->GetRelativeLocation();
+		Loc.X = 0.f;
+		Loc.Z = SpinnyDownHitboxZOffset;
+		SwordHitbox->SetRelativeLocation(Loc);
+	}
+
+	// Ground-pound-style fast forced descent for the duration of the attack -- see SpinnyDownFallSpeed.
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		FVector Velocity = MoveComp->Velocity;
+		Velocity.Z = -SpinnyDownFallSpeed;
+		MoveComp->Velocity = Velocity;
+	}
+
 	GetWorldTimerManager().SetTimer(SwordHitboxEnableTimerHandle, this, &ADeathMetalCatCharacter::EnableSwordHitbox, HitboxActiveDelay, false);
 	GetWorldTimerManager().SetTimer(SwordAttackEndTimerHandle, this, &ADeathMetalCatCharacter::ClearAttackState, AttackDuration, false);
 }
@@ -924,6 +1232,42 @@ void ADeathMetalCatCharacter::DisableSwordHitbox()
 void ADeathMetalCatCharacter::ClearAttackState()
 {
 	bIsAttacking = false;
+
+	if (bIsSpinnyDownAttackActive)
+	{
+		bIsSpinnyDownAttackActive = false;
+		if (SwordHitbox)
+		{
+			FVector Loc = SwordHitbox->GetRelativeLocation();
+			Loc.Z = 0.f;
+			SwordHitbox->SetRelativeLocation(Loc);
+		}
+	}
+
+	if (!bLastAttackWasComboEligible)
+	{
+		// Uppy / Double Whammy / Spinny Down are one-off moves -- never open the ground-combo window.
+		return;
+	}
+
+	if (bComboInputBuffered)
+	{
+		// Pressed again during recovery frames -- chain immediately into the next stage rather than
+		// waiting for the buffered window (which is for a press AFTER the attack fully finishes).
+		bComboInputBuffered = false;
+		SwordComboIndex = (SwordComboIndex + 1) % 3;
+		StartSwordComboStage(SwordComboIndex);
+		return;
+	}
+
+	bSwordComboWindowOpen = true;
+	GetWorldTimerManager().SetTimer(SwordComboWindowTimerHandle, this, &ADeathMetalCatCharacter::ResetSwordComboWindow, SwordComboBufferWindow, false);
+}
+
+void ADeathMetalCatCharacter::ResetSwordComboWindow()
+{
+	bSwordComboWindowOpen = false;
+	SwordComboIndex = 0;
 }
 
 void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -966,6 +1310,15 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	{
 		SpawnDamageNumber(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
 		RegisterGnarlyHit();
+
+		// Uppy-only: launches the hit enemy upward on top of normal damage -- see UppyLaunchVelocityZ.
+		if (bCurrentAttackLaunchesTarget)
+		{
+			if (ACharacter* HitCharacter = Cast<ACharacter>(OtherActor))
+			{
+				HitCharacter->LaunchCharacter(FVector(0.f, 0.f, UppyLaunchVelocityZ), false, true);
+			}
+		}
 	}
 }
 
@@ -1064,14 +1417,15 @@ void ADeathMetalCatCharacter::BeginHoldFireLoop()
 	ShootAnimPhase = EShootPhase::HoldFiring;
 
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-	UpdateHoldFireFlipbook(MoveComp && MoveComp->IsFalling());
+	const bool bAirborne = MoveComp && MoveComp->IsFalling();
+	UpdateHoldFireFlipbook(bAirborne, bAirborne && bIsHoldingDownInput);
 
 	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  BeginHoldFireLoop"), GetWorld()->GetTimeSeconds());
 
 	FireShotTrace();
 }
 
-void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne)
+void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne, bool bAngled)
 {
 	UPaperFlipbookComponent* SpriteComp = GetSprite();
 	if (!SpriteComp)
@@ -1079,11 +1433,11 @@ void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne)
 		return;
 	}
 
-	// Engine-driven looping playback, not manual SetPlaybackPositionInFrames jumping: both rows'
-	// frames already cycle through their own variations (muzzle-flash / down-shot) while holding
-	// a consistent pose, so there's no per-frame role for code to pick between anymore -- just
-	// let whichever one applies play.
-	UPaperFlipbook* DesiredFlipbook = bAirborne ? AirDownShotFlipbook : HoldFireFlipbook;
+	// Engine-driven looping playback, not manual SetPlaybackPositionInFrames jumping: all three
+	// rows' frames already cycle through their own variations (muzzle-flash / down-shot) while
+	// holding a consistent pose, so there's no per-frame role for code to pick between anymore --
+	// just let whichever one applies play.
+	UPaperFlipbook* DesiredFlipbook = !bAirborne ? HoldFireFlipbook : (bAngled ? AirShotAngledFlipbook : AirDownShotFlipbook);
 	if (DesiredFlipbook && CurrentFlipbook != DesiredFlipbook)
 	{
 		SpriteComp->SetFlipbook(DesiredFlipbook);
@@ -1141,21 +1495,26 @@ void ADeathMetalCatCharacter::FireShotTrace()
 
 	// Airborne re-checked fresh per shot (not cached from the start of the hold) so jumping or
 	// landing mid-hold correctly changes the very next shot, same as the facing check above.
-	// AirDownShotFlipbook is kept in sync with this same check via UpdateHoldFireFlipbook.
+	// AirDownShotFlipbook/AirShotAngledFlipbook are kept in sync with this same check via
+	// UpdateHoldFireFlipbook.
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	const bool bAirborneShot = MoveComp && MoveComp->IsFalling();
-	UpdateHoldFireFlipbook(bAirborneShot);
+	const bool bAngledShot = bAirborneShot && bIsHoldingDownInput;
+	UpdateHoldFireFlipbook(bAirborneShot, bAngledShot);
 
 	if (bAirborneShot)
 	{
 		// Independent of FireDirection/animation below -- this only ever touches GravityScale, so
-		// it can't fight with the fixed 45-degree trajectory or the Air Down Shot flipbook.
+		// it can't fight with either airborne trajectory or flipbook choice.
 		ApplyAirFireFloat();
 	}
 
-	// Airborne: fixed 45 degrees downward, horizontal component still respecting facing (an
-	// aim-down-forward shot, not a pure vertical drop) -- grounded: unchanged pure horizontal.
-	const FVector FireDirection = bAirborneShot
+	// Airborne + holding Down (or Forward+Down): fixed 45 degrees downward, horizontal component
+	// still respecting facing (an aim-down-forward shot, not a pure vertical drop). Airborne without
+	// Down, same as grounded: pure horizontal -- previously EVERY airborne shot used the fixed
+	// 45-degree angle; see AirShotAngledFlipbook's doc comment for why the default moved to
+	// horizontal once this variant needed to be visually/mechanically distinct from it.
+	const FVector FireDirection = bAngledShot
 		? FVector(FacingSign, 0.f, -1.f).GetSafeNormal()
 		: FVector(FacingSign, 0.f, 0.f);
 
@@ -1254,6 +1613,11 @@ void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 	UpdateWallSlide();
 	UpdateAnimation();
 
+	if (bIsDashing)
+	{
+		UpdateInvulnDash();
+	}
+
 	if (bJumpDistanceTestActive)
 	{
 		UpdateJumpDistanceTest();
@@ -1300,6 +1664,21 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// via SetDodgeFrame), not tick-based -- nothing to do here except make sure nothing else
 		// stomps it while a dodge is in progress.
 	}
+	else if (bIsDashing)
+	{
+		// InvulnDashFlipbook is started once (non-looping, after-image baked into its own frames) in
+		// HandleInvulnDash itself -- nothing to switch here.
+	}
+	else if (bIsBlocking)
+	{
+		if (BlockFlipbook && CurrentFlipbook != BlockFlipbook)
+		{
+			SpriteComp->SetFlipbook(BlockFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->Play();
+			CurrentFlipbook = BlockFlipbook;
+		}
+	}
 	else if (bIsWallSliding)
 	{
 		if (WallSlideFlipbook && CurrentFlipbook != WallSlideFlipbook)
@@ -1333,11 +1712,14 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 	}
 	else
 	{
+		// Walk removed as a separate state -- it briefly flashed on-screen right at movement start
+		// before Run took over, and served no purpose once Run covers slow-to-fast movement fine on
+		// its own. Any nonzero horizontal speed goes straight to Run, no threshold.
 		UPaperFlipbook* DesiredFlipbook = IdleFlipbook;
 		const float CurrentMoveSpeed = FMath::Abs(Velocity.X);
 		if (CurrentMoveSpeed > KINDA_SMALL_NUMBER)
 		{
-			DesiredFlipbook = (CurrentMoveSpeed >= WalkSpeedThreshold) ? RunFlipbook : WalkFlipbook;
+			DesiredFlipbook = RunFlipbook;
 		}
 
 		if (DesiredFlipbook && DesiredFlipbook != CurrentFlipbook)
@@ -1357,6 +1739,23 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// if allowed to run here. Hold at whatever facing was captured the instant the dodge started.
 		FVector Scale = SpriteComp->GetRelativeScale3D();
 		Scale.X = DodgeFacingSignAtStart * FMath::Abs(Scale.X);
+		SpriteComp->SetRelativeScale3D(Scale);
+	}
+	else if (bIsDashing)
+	{
+		// Same reasoning as Dodge above -- the dash's velocity points toward facing (forward, not
+		// backward), but locking it still avoids any mid-burst flip from a stray velocity blip.
+		FVector Scale = SpriteComp->GetRelativeScale3D();
+		Scale.X = DashFacingSignAtStart * FMath::Abs(Scale.X);
+		SpriteComp->SetRelativeScale3D(Scale);
+	}
+	else if (bIsBlocking)
+	{
+		// Velocity.X is ~0 while blocking (movement is locked out in HandleMoveRight), so the
+		// velocity-based flip below would have nothing reliable to go on -- hold whatever facing was
+		// captured the instant Block was pressed, same pattern as Dodge/Dash/WallSlide.
+		FVector Scale = SpriteComp->GetRelativeScale3D();
+		Scale.X = BlockFacingSignAtStart * FMath::Abs(Scale.X);
 		SpriteComp->SetRelativeScale3D(Scale);
 	}
 	else if (bIsWallSliding)

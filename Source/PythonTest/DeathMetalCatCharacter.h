@@ -164,30 +164,14 @@ protected:
 	UFUNCTION()
 	void OnSwordHitboxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-	/** Bound to the ShootAction's Started event: enters the held-fire state and begins the quick-draw pose. Delegates entirely to HandleFancyAttack while bIsTransformed -- Gun Fire is repurposed into the ultimate's laser attack for the duration of the ride. */
+	/**
+	 * Bound to the ShootAction's Started event: enters the held-fire state and begins the hold-fire
+	 * loop. While bIsTransformed, this is also the ultimate's rainbow-laser attack -- Gun Fire is
+	 * repurposed for the duration of the ride, but goes through this exact same continuous
+	 * hold-to-fire path as the regular gun (see UpdateHoldFireFlipbook's own bIsTransformed branch),
+	 * not a separate single-press case.
+	 */
 	void HandleShootStarted(const FInputActionValue& Value);
-
-	/**
-	 * The ultimate's one attack (rainbow laser eyes), triggered by Gun Fire while bIsTransformed
-	 * instead of the normal draw/hold-fire sequence -- a single press, not hold-to-fire (the source
-	 * art reads as one dramatic blast, not a sustained stream). Plays FancyAttackFlipbook once and
-	 * fires a single horizontal hitscan shot, reusing GunBaseDamage/Dexterity/FireCooldown exactly
-	 * as normal gun fire does -- no damage bonus for "powerful rainbow laser eyes" was requested
-	 * beyond the visual, so none was added; flag it if you want the ultimate's attack to hit harder.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Rage")
-	void HandleFancyAttack();
-
-	/**
-	 * Timer callback: ends the FancyAttackFlipbook protection window started by HandleFancyAttack
-	 * (armed for FancyAttackFlipbook->GetTotalDuration(), so retiming that flipbook's fps later
-	 * can't silently cut it short -- same self-correcting pattern as InvulnDash's own duration fix).
-	 * Needed because ShootAnimPhase never leaves None during a Fancy Attack (HandleFancyAttack
-	 * bypasses the normal draw/hold-fire state machine entirely), so without a dedicated flag
-	 * UpdateAnimation's lowest-priority Idle/Gallop branch would stomp FancyAttackFlipbook back
-	 * within a single tick.
-	 */
-	void ClearFancyAttackState();
 
 	/**
 	 * Bound to the ShootAction's Triggered event (fires every tick while held, including the same
@@ -1189,21 +1173,31 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
 	float RageBeamHueCycleSpeed = 360.f;
 
-	/** Vertical offset (uu) above GetActorLocation() the Fancy Attack laser starts from -- tuned to land near the mount's glowing eye/horn in FancyAttackFlipbook's art, not the actor's capsule-center origin. Placeholder value, verify against the sprite in PIE and retune freely. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
-	float FancyAttackBeamEyeHeight = 60.f;
+	/**
+	 * Vertical offset (uu) above GetActorLocation() the Fancy Attack laser starts from -- CAN be
+	 * negative (the measured value is), so deliberately no ClampMin. Measured directly from
+	 * FancyAttackFlipbook's own source art rather than guessed: found the beam's actual origin
+	 * flare (the unicorn's glowing eye) at pixel (121, 212) in the frame's 384x384 canvas via a
+	 * brightness search, confirmed against a marker overlay, then converted to world space using
+	 * the sprite component's own known relative transform (RelativeLocation.Z = -10, queried live
+	 * from the CDO) as the canvas-center anchor. The previous 60 (guessed, "above actor origin")
+	 * was landing near the top of the mount's head, well above the actual eye -- this corrected
+	 * value is BELOW actor origin, matching where the eye really sits on a creature this tall.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage")
+	float FancyAttackBeamEyeHeight = -30.f;
 
-	/** Horizontal offset (uu), in the current facing direction, added on top of FancyAttackBeamEyeHeight so the laser visually originates just in front of the mount's face rather than from inside its body. Placeholder value, tune freely. */
+	/** Horizontal offset (uu), in the current facing direction, added on top of FancyAttackBeamEyeHeight so the laser visually originates just in front of the mount's face rather than from inside its body. Measured the same way as FancyAttackBeamEyeHeight -- the eye flare sits 71px from canvas-center horizontally at this flipbook's PPU (1.0), so 71uu, not the previous guessed 30. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
-	float FancyAttackBeamForwardOffset = 30.f;
+	float FancyAttackBeamForwardOffset = 71.f;
 
 	/** Radius (uu) of the Fancy Attack laser's cylinder mesh. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
 	float FancyAttackBeamThickness = 8.f;
 
-	/** How long (seconds) the Fancy Attack laser stays visible (hue-cycling, fading out) before hiding -- a quick zap, not a sustained beam, since FireShotTrace's damage/hit already resolves instantly. Placeholder value, tune freely. */
+	/** How long (seconds) each individual shot's laser flash stays visible (hue-cycling, fading out) before hiding. Set slightly ABOVE FireCooldown (0.3s) rather than below it: FireShotTrace re-triggers SpawnFancyAttackBeam on every repeat shot while the button is held (same continuous hold-fire pattern as the regular gun -- see HandleShootHeld), so each new shot's flash refreshes this one back to full opacity before it fully fades, reading as one continuous beam rather than a series of gapped strobes. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
-	float FancyAttackBeamLifetime = 0.2f;
+	float FancyAttackBeamLifetime = 0.35f;
 
 	/** Degrees per second the Fancy Attack laser's color cycles through the hue wheel -- faster than RageBeamHueCycleSpeed since this beam is on screen so much more briefly. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
@@ -1217,10 +1211,71 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rage")
 	bool IsRageFull() const { return RageMeter >= RageMax; }
 
+	/**
+	 * Sets (or overwrites) how far to shift the sprite's own relative Z, in world units, whenever
+	 * Flipbook is the one currently showing -- see FlipbookFeetOffsetCorrections' own doc comment
+	 * for why this exists. A UFUNCTION specifically so it can be populated from editor scripting
+	 * (measured per-flipbook via the source art's own pixel data, not guessed) without needing
+	 * direct Python manipulation of a TMap-of-UObject-keys property, which is unreliable to
+	 * round-trip. Idle itself is never given an entry (its correction is 0 by definition -- it's
+	 * the baseline every other flipbook's correction was measured against).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Animation")
+	void SetFeetOffsetCorrection(UPaperFlipbook* Flipbook, float ZOffsetCorrection);
+
+	/**
+	 * Dev/testing entry point: forces CurrentFlipbook to Flipbook (also pushing it onto the sprite
+	 * component directly) and reapplies ApplyFeetOffsetCorrection immediately, so floor-contact
+	 * alignment for any animation state can be verified from editor/Python scripting without
+	 * needing to actually trigger that state via real input -- mirrors TryActivateUltimate's own
+	 * reason for existing (no LocalPlayer/EnhancedInputLocalPlayerSubsystem access from Python).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Animation")
+	void Debug_ForceFlipbookForFeetTest(UPaperFlipbook* Flipbook);
+
+	/**
+	 * Dev/testing entry point: starts (bStart=true) or cleanly ends (bStart=false) the continuous
+	 * hold-fire loop exactly as HandleShootStarted/HandleShootReleased would from a real held Shoot
+	 * input -- including the Fancy Attack beam path while bIsTransformed, since that now goes
+	 * through this same continuous loop. Exists for the same reason as
+	 * Debug_ForceFlipbookForFeetTest -- real Enhanced Input can't be injected from Python.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Rage")
+	void Debug_SetHoldFireForTest(bool bStart);
+
 private:
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
 	TObjectPtr<UPaperFlipbook> CurrentFlipbook = nullptr;
+
+	/**
+	 * Per-flipbook vertical correction (world units), added on top of the sprite component's own
+	 * base relative Z whenever that flipbook is CurrentFlipbook -- see ApplyFeetOffsetCorrection.
+	 * Exists because matched overall render SIZE and a shared CENTER_CENTER pivot on every flipbook
+	 * do NOT guarantee matched floor contact: CENTER_CENTER finds each frame's own canvas center,
+	 * but different sheets have different amounts of empty transparent padding above/below the
+	 * character (and different poses extend differently within their canvas -- a standing Idle pose
+	 * reaches lower toward its own canvas edge than a tucked airborne pose does toward its own), so
+	 * the true pixel distance from "canvas center" to "where the feet actually are" varies between
+	 * flipbooks even at identical cell size and pivot mode. Measured directly from each flipbook's
+	 * own source art (lowest non-transparent pixel row of a representative frame, converted to world
+	 * units via that flipbook's own PixelsPerUnrealUnit) and set once via SetFeetOffsetCorrection,
+	 * not guessed or hand-tuned per animation. A flipbook with no entry here (e.g. Idle itself, or
+	 * any Fancy Pants flipbook) applies no correction -- falls back to the sprite's plain base
+	 * relative Z untouched. Deliberately NOT Transient -- this needs to persist with the Blueprint
+	 * across editor restarts, not be rebuilt by re-running a Python script every session.
+	 */
+	UPROPERTY()
+	TMap<TObjectPtr<UPaperFlipbook>, float> FlipbookFeetOffsetCorrections;
+
+	/** Captured once in BeginPlay via GetSprite()->GetRelativeLocation() -- the sprite component's own designed-in offset (e.g. nudging it down slightly from the capsule center) before any per-flipbook feet correction is layered on top. ApplyFeetOffsetCorrection always corrects relative to this captured base, never relative to whatever the Z happened to be last tick, so corrections can never compound. */
+	FVector BaseSpriteRelativeLocation = FVector::ZeroVector;
+
+	/** Called once at the end of UpdateAnimation every Tick (after CurrentFlipbook is authoritative for the frame): sets the sprite's relative Z to BaseSpriteRelativeLocation.Z plus whatever correction FlipbookFeetOffsetCorrections has for CurrentFlipbook (0 if none), so every flipbook's feet land at the same world-space contact height regardless of which one is currently showing. */
+	void ApplyFeetOffsetCorrection();
+
+	/** Called once from BeginPlay: fills FlipbookFeetOffsetCorrections from literal measured constants keyed off the already-assigned flipbook UPROPERTYs -- see its own doc comment in the .cpp for why this replaced editor/Python-driven CDO population. */
+	void PopulateFeetOffsetCorrections();
 
 	/** Backs CanTakeDamage(); cleared independently of bIsDodging by IFrameTimerHandle. */
 	bool bIsInvincible = false;
@@ -1338,11 +1393,6 @@ private:
 	bool bFancyAttackBeamActive = false;
 
 	float FancyAttackBeamStartTime = 0.f;
-
-	/** True while FancyAttackFlipbook is protected from being overwritten by UpdateAnimation's Idle/Gallop branch -- see ClearFancyAttackState. */
-	bool bIsPlayingFancyAttack = false;
-
-	FTimerHandle FancyAttackTimerHandle;
 
 	FTimerHandle ShootTimerHandle;
 

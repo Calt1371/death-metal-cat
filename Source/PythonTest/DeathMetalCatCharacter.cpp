@@ -116,6 +116,14 @@ void ADeathMetalCatCharacter::BeginPlay()
 		GetSprite()->SetFlipbook(IdleFlipbook);
 		CurrentFlipbook = IdleFlipbook;
 	}
+
+	// Captured before any per-flipbook feet correction ever runs -- see ApplyFeetOffsetCorrection.
+	if (GetSprite())
+	{
+		BaseSpriteRelativeLocation = GetSprite()->GetRelativeLocation();
+	}
+
+	PopulateFeetOffsetCorrections();
 }
 
 void ADeathMetalCatCharacter::NotifyControllerChanged()
@@ -1562,14 +1570,10 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 
 void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
 {
-	if (bIsTransformed)
-	{
-		// Gun Fire is repurposed into the ultimate's one attack for the duration of the ride --
-		// see HandleFancyAttack.
-		HandleFancyAttack();
-		return;
-	}
-
+	// Gun Fire is repurposed into the ultimate's continuous attack for the duration of the ride --
+	// bIsTransformed is handled entirely inside BeginHoldFireLoop/UpdateHoldFireFlipbook/
+	// FireShotTrace from here on, the exact same hold-to-fire path as the regular gun (no separate
+	// single-press case anymore).
 	bIsHoldingShootButton = true;
 
 	// Defensive: don't trust that HandleShootReleased always cleaned up properly. Rapid
@@ -1587,14 +1591,6 @@ void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
 
 void ADeathMetalCatCharacter::HandleShootHeld(const FInputActionValue& Value)
 {
-	if (bIsTransformed)
-	{
-		// Fancy Attack (HandleFancyAttack, via HandleShootStarted) is a single press, not
-		// hold-to-fire -- ShootAnimPhase never leaves None while transformed so this would no-op
-		// anyway, but guarded explicitly for clarity.
-		return;
-	}
-
 	// Triggered fires every tick while held, including the same tick as Started -- the bIsShooting
 	// check (still on cooldown from the first shot BeginHoldFireLoop() just fired) is what skips
 	// that redundant same-tick call, not ShootAnimPhase (which is already HoldFiring by this point
@@ -1629,45 +1625,6 @@ void ADeathMetalCatCharacter::ResetShootState()
 	bIsShooting = false;
 }
 
-void ADeathMetalCatCharacter::HandleFancyAttack()
-{
-	if (bIsShooting || bIsPlayingFancyAttack)
-	{
-		// bIsShooting is the normal FireCooldown gate; bIsPlayingFancyAttack is also checked (not
-		// just bIsShooting) because releasing Gun Fire mid-animation clears bIsShooting early via
-		// HandleShootReleased -> ResetShootState -- without this, a quick tap-release-tap could
-		// re-trigger and restart the laser well before its ~1.25s animation actually finishes.
-		return;
-	}
-
-	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
-	{
-		if (FancyAttackFlipbook)
-		{
-			SpriteComp->SetFlipbook(FancyAttackFlipbook);
-			SpriteComp->SetLooping(false);
-			SpriteComp->PlayFromStart();
-			CurrentFlipbook = FancyAttackFlipbook;
-
-			// Protects this flipbook from UpdateAnimation's Idle/Gallop branch for its own full
-			// duration -- ShootAnimPhase never leaves None here (unlike normal gun fire), so without
-			// this dedicated flag the very next Tick would stomp it back within one frame.
-			bIsPlayingFancyAttack = true;
-			GetWorldTimerManager().SetTimer(FancyAttackTimerHandle, this, &ADeathMetalCatCharacter::ClearFancyAttackState, FancyAttackFlipbook->GetTotalDuration(), false);
-		}
-	}
-
-	// Reuses the exact same hitscan/damage/Rage pipeline as normal gun fire -- see FireShotTrace.
-	// UpdateHoldFireFlipbook (called from within FireShotTrace) sees bIsTransformed and leaves the
-	// flipbook we just set alone rather than switching to HoldFireFlipbook/AirDownShotFlipbook.
-	FireShotTrace();
-}
-
-void ADeathMetalCatCharacter::ClearFancyAttackState()
-{
-	bIsPlayingFancyAttack = false;
-}
-
 void ADeathMetalCatCharacter::BeginHoldFireLoop()
 {
 	ShootAnimPhase = EShootPhase::HoldFiring;
@@ -1689,16 +1646,14 @@ void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne, bool bAngle
 
 	if (bIsTransformed)
 	{
-		// Riding Fancy Pants: the ultimate's one attack always shows FancyAttackFlipbook regardless
-		// of grounded/airborne/angled state -- those sub-variants have no Fancy-Cayde equivalent art.
-		// HandleFancyAttack already sets this same flipbook before calling FireShotTrace (which is
-		// what calls this function), so this is normally a no-op guard rather than the first set --
-		// but it's needed to stop the grounded/airborne branch below from stomping it back to
-		// HoldFireFlipbook/AirDownShotFlipbook the instant this function runs.
+		// Riding Fancy Pants: the ultimate's attack always shows FancyAttackFlipbook regardless of
+		// grounded/airborne/angled state -- those sub-variants have no Fancy-Cayde equivalent art.
+		// Looping, same as the regular HoldFireFlipbook case below, since this is now a genuine
+		// continuous hold-fire (see HandleShootHeld) rather than the old single-press one-shot.
 		if (FancyAttackFlipbook && CurrentFlipbook != FancyAttackFlipbook)
 		{
 			SpriteComp->SetFlipbook(FancyAttackFlipbook);
-			SpriteComp->SetLooping(false);
+			SpriteComp->SetLooping(true);
 			SpriteComp->PlayFromStart();
 			CurrentFlipbook = FancyAttackFlipbook;
 		}
@@ -1930,13 +1885,6 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// bIsShooting is only the short per-shot fire-rate gate, not the (much longer) whole-hold
 		// animation window.
 	}
-	else if (bIsPlayingFancyAttack)
-	{
-		// FancyAttackFlipbook is started once (non-looping) in HandleFancyAttack itself -- nothing
-		// to do here except make sure nothing else (the Idle/Gallop branch, specifically) stomps it
-		// while the ultimate's attack is playing. See bIsPlayingFancyAttack's own doc comment for
-		// why this dedicated flag exists (ShootAnimPhase doesn't cover this path).
-	}
 	else if (bIsDodging)
 	{
 		// The 5-frame handspring sequence is fully event-driven (HandleDodge / AdvanceDodgeFrame
@@ -2057,5 +2005,110 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		FVector Scale = SpriteComp->GetRelativeScale3D();
 		Scale.X = (Velocity.X < 0.f) ? -FMath::Abs(Scale.X) : FMath::Abs(Scale.X);
 		SpriteComp->SetRelativeScale3D(Scale);
+	}
+
+	// CurrentFlipbook is authoritative for the frame by this point -- every branch above either set
+	// it directly or deliberately left it alone (already showing the right thing).
+	ApplyFeetOffsetCorrection();
+}
+
+void ADeathMetalCatCharacter::SetFeetOffsetCorrection(UPaperFlipbook* Flipbook, float ZOffsetCorrection)
+{
+	if (!Flipbook)
+	{
+		return;
+	}
+	FlipbookFeetOffsetCorrections.Add(Flipbook, ZOffsetCorrection);
+}
+
+void ADeathMetalCatCharacter::PopulateFeetOffsetCorrections()
+{
+	// Measured directly from each flipbook's own source art (lowest non-transparent pixel row of a
+	// representative frame, converted to world units via that flipbook's own PixelsPerUnrealUnit,
+	// then compared against Idle's own measurement as the baseline -- see FlipbookFeetOffsetCorrections'
+	// own doc comment). Populated here in BeginPlay, keyed off the already-assigned flipbook
+	// UPROPERTYs, rather than via SetFeetOffsetCorrection from editor/Python tooling: a Blueprint
+	// CDO's TMap<UObject*, float> mutated through a UFUNCTION call from Python was confirmed (live,
+	// this session) to NOT propagate to freshly spawned/PIE'd instances, even though the exact same
+	// CDO mutation is immediately visible when queried back on that same CDO object -- a plain
+	// EditDefaultsOnly float set the same way DOES propagate correctly, so the gap is specific to
+	// this TMap. Rather than chase that further, every instance now builds its own table fresh in
+	// BeginPlay from literal measured constants, matching this file's existing "Placeholder value,
+	// tune freely" convention for every other tuned constant. SetFeetOffsetCorrection is left in
+	// place as a BlueprintCallable override for ad-hoc live tuning on an already-spawned instance.
+	if (RunFlipbook) FlipbookFeetOffsetCorrections.Add(RunFlipbook, 13.826f);
+	if (JumpFlipbook) FlipbookFeetOffsetCorrections.Add(JumpFlipbook, -12.5f);
+	if (DodgeFlipbook) FlipbookFeetOffsetCorrections.Add(DodgeFlipbook, 2.5f);
+	if (HoldFireFlipbook) FlipbookFeetOffsetCorrections.Add(HoldFireFlipbook, 0.5f);
+	if (AirDownShotFlipbook) FlipbookFeetOffsetCorrections.Add(AirDownShotFlipbook, -14.0f);
+	if (AirShotAngledFlipbook) FlipbookFeetOffsetCorrections.Add(AirShotAngledFlipbook, -5.0f);
+	if (SwordAttackFlipbook) FlipbookFeetOffsetCorrections.Add(SwordAttackFlipbook, 4.784f);
+	if (SwordCombo2Flipbook) FlipbookFeetOffsetCorrections.Add(SwordCombo2Flipbook, -7.354f);
+	if (SwordCombo3Flipbook) FlipbookFeetOffsetCorrections.Add(SwordCombo3Flipbook, -5.0f);
+	if (UppyFlipbook) FlipbookFeetOffsetCorrections.Add(UppyFlipbook, -8.0f);
+	if (DoubleWhammyFlipbook) FlipbookFeetOffsetCorrections.Add(DoubleWhammyFlipbook, -20.5f);
+	if (SpinnyDownFlipbook) FlipbookFeetOffsetCorrections.Add(SpinnyDownFlipbook, -33.024f);
+	if (BlockFlipbook) FlipbookFeetOffsetCorrections.Add(BlockFlipbook, 9.5f);
+	if (InvulnDashFlipbook) FlipbookFeetOffsetCorrections.Add(InvulnDashFlipbook, 3.5f);
+	if (WallSlideFlipbook) FlipbookFeetOffsetCorrections.Add(WallSlideFlipbook, -16.941f);
+	if (HurtFlipbook) FlipbookFeetOffsetCorrections.Add(HurtFlipbook, -0.5f);
+
+	// Fancy Pants (riding the mount) flipbooks -- an entirely separate sprite sheet/character from
+	// solo Cayde, so these are measured against FancyIdleFlipbook as their own baseline (0, no
+	// entry needed), not against IdleFlipbook above. Same lowest-non-transparent-pixel-row
+	// methodology, alpha>=128 threshold (a faint anti-aliasing/shadow tail below the visually solid
+	// hoof was confirmed on this art at the alpha>0 threshold used for solo Cayde).
+	if (FancyGallopFlipbook) FlipbookFeetOffsetCorrections.Add(FancyGallopFlipbook, -9.0f);
+	if (FancyAttackFlipbook) FlipbookFeetOffsetCorrections.Add(FancyAttackFlipbook, 16.0f);
+}
+
+void ADeathMetalCatCharacter::Debug_ForceFlipbookForFeetTest(UPaperFlipbook* Flipbook)
+{
+	if (!Flipbook)
+	{
+		return;
+	}
+	CurrentFlipbook = Flipbook;
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		SpriteComp->SetFlipbook(Flipbook);
+	}
+	ApplyFeetOffsetCorrection();
+}
+
+void ADeathMetalCatCharacter::Debug_SetHoldFireForTest(bool bStart)
+{
+	if (bStart)
+	{
+		bIsHoldingShootButton = true;
+		if (ShootAnimPhase != EShootPhase::None)
+		{
+			ResetShootState();
+		}
+		BeginHoldFireLoop();
+	}
+	else
+	{
+		bIsHoldingShootButton = false;
+		ResetShootState();
+	}
+}
+
+void ADeathMetalCatCharacter::ApplyFeetOffsetCorrection()
+{
+	UPaperFlipbookComponent* SpriteComp = GetSprite();
+	if (!SpriteComp)
+	{
+		return;
+	}
+
+	const float* Correction = FlipbookFeetOffsetCorrections.Find(CurrentFlipbook);
+	const float TargetZ = BaseSpriteRelativeLocation.Z + (Correction ? *Correction : 0.f);
+
+	FVector Loc = SpriteComp->GetRelativeLocation();
+	if (!FMath::IsNearlyEqual(Loc.Z, TargetZ))
+	{
+		Loc.Z = TargetZ;
+		SpriteComp->SetRelativeLocation(Loc);
 	}
 }

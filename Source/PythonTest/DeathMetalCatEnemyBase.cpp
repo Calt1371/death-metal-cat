@@ -172,6 +172,34 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 	{
 		CachedFlipbookComponent = FindComponentByClass<UPaperFlipbookComponent>();
 	}
+	if (CachedFlipbookComponent && !bBaseSpriteLocationCaptured)
+	{
+		BaseSpriteRelativeLocation = CachedFlipbookComponent->GetRelativeLocation();
+		bBaseSpriteLocationCaptured = true;
+
+		// Small per-instance depth (Y) jitter on the SPRITE ONLY -- every character in this 2D
+		// side-scroller is plane-constrained to the exact same world Y (see the constructor's
+		// bConstrainToPlane/SetPlaneConstraintNormal, and this class's own player-Y snap above),
+		// so every enemy's flat masked-opaque sprite quad sits at IDENTICAL depth. Masked materials
+		// write hardware depth and are drawn in the opaque pass (confirmed: MaskedUnlitSpriteMaterial,
+		// BLEND_MASKED, not translucent), so two same-depth sprites whose screen-space quads overlap
+		// (characters standing close together) hit a depth-test tie -- the GPU can't consistently
+		// pick a winner per pixel, which reads as flickering/dithered "fuzzy merging" exactly where
+		// they overlap. A sub-unit jitter is enough to break the tie (depth buffer precision is far
+		// finer than this) without any visible parallax in a 2D game. Only the sprite's own relative
+		// location is nudged -- actor location/collision/movement stay exactly on the locked plane,
+		// untouched. GetUniqueID() is stable per-actor, but sequentially-spawned actors (the common
+		// case -- a spawner placing several enemies in a row) get sequential IDs, and a plain modulo
+		// preserves that locality: two enemies spawned back-to-back landed only 0.006uu apart when
+		// this used "% 2000" directly, confirmed live -- nowhere near enough separation. Knuth's
+		// multiplicative hash constant scrambles sequential inputs across the full output range
+		// before the modulo, so adjacent spawns land far apart instead of adjacent.
+		const uint32 Hashed = GetUniqueID() * 2654435761u;
+		FVector JitteredLocation = BaseSpriteRelativeLocation;
+		JitteredLocation.Y += static_cast<float>(Hashed % 2000) * 0.001f - 1.0f; // [-1.0, 1.0] uu
+		CachedFlipbookComponent->SetRelativeLocation(JitteredLocation);
+		BaseSpriteRelativeLocation = JitteredLocation;
+	}
 
 	const FVector MyLocation = GetActorLocation();
 	const FVector PlayerLocation = CachedPlayerCharacter->GetActorLocation();
@@ -288,6 +316,48 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 				CachedFlipbookComponent->IsPlaying(), CachedFlipbookComponent->IsLooping(),
 				CachedFlipbookComponent->GetRelativeScale3D().X);
 		}
+	}
+
+	// Called unconditionally every Tick (not just inside the Idle/Walk selection block above) so it
+	// also picks up ShootDraw/ShootLoop, which BeginRangedAttack/BeginBurstLoop set directly outside
+	// that block -- it re-reads CachedFlipbookComponent->GetFlipbook() fresh each call rather than
+	// relying on being invoked right after whatever set it.
+	ApplyFeetOffsetCorrection();
+}
+
+void ADeathMetalCatEnemyBase::ApplyFeetOffsetCorrection()
+{
+	if (!CachedFlipbookComponent)
+	{
+		return;
+	}
+
+	float Correction = 0.f;
+	UPaperFlipbook* Current = CachedFlipbookComponent->GetFlipbook();
+	if (Current == WalkFlipbook)
+	{
+		Correction = WalkFeetOffsetCorrection;
+	}
+	else if (Current == AttackFlipbook)
+	{
+		Correction = AttackFeetOffsetCorrection;
+	}
+	else if (Current == ShootDrawFlipbook)
+	{
+		Correction = ShootDrawFeetOffsetCorrection;
+	}
+	else if (Current == ShootLoopFlipbook)
+	{
+		Correction = ShootLoopFeetOffsetCorrection;
+	}
+	// Idle (or anything else, e.g. no flipbook set at all) -- Correction stays 0, the baseline.
+
+	const float TargetZ = BaseSpriteRelativeLocation.Z + Correction;
+	FVector Loc = CachedFlipbookComponent->GetRelativeLocation();
+	if (!FMath::IsNearlyEqual(Loc.Z, TargetZ))
+	{
+		Loc.Z = TargetZ;
+		CachedFlipbookComponent->SetRelativeLocation(Loc);
 	}
 }
 

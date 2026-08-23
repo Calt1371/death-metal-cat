@@ -279,6 +279,34 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
 	TObjectPtr<UPaperFlipbook> ShootLoopFlipbook = nullptr;
 
+	/**
+	 * Per-state vertical corrections (world units), added on top of the flipbook component's own
+	 * base relative Z whenever the matching flipbook is currently showing -- see
+	 * ApplyFeetOffsetCorrection. Idle is always the implicit baseline (0, not a separate property)
+	 * since every subclass sets IdleFlipbook and it's the state every corrected pose is measured
+	 * against, mirroring ADeathMetalCatCharacter's own IdleFlipbook-as-baseline convention. Plain
+	 * per-role floats rather than a TMap keyed by flipbook -- this base class is shared by several
+	 * enemy Blueprint subclasses with entirely different art, so each subclass just sets whichever
+	 * of these four fields its own measured art needs and leaves the rest at the harmless 0 default
+	 * (no correction). Deliberately NOT a TObjectPtr-keyed TMap populated from Python/editor
+	 * scripting -- confirmed this session (on ADeathMetalCatCharacter's own equivalent map) that a
+	 * Blueprint CDO's TMap<UObject*, float> mutated via a UFUNCTION call from Python does not
+	 * propagate to freshly spawned instances, while a plain EditDefaultsOnly field does; these
+	 * floats sidestep that gap entirely and are also simply how a designer would tune per-Blueprint
+	 * values in the Class Defaults panel regardless.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "-1000", ClampMax = "1000"))
+	float WalkFeetOffsetCorrection = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "-1000", ClampMax = "1000"))
+	float AttackFeetOffsetCorrection = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "-1000", ClampMax = "1000"))
+	float ShootDrawFeetOffsetCorrection = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "-1000", ClampMax = "1000"))
+	float ShootLoopFeetOffsetCorrection = 0.f;
+
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> DynamicMaterial;
@@ -316,6 +344,15 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UPaperFlipbookComponent> CachedFlipbookComponent;
+
+	/** Captured once, the first Tick CachedFlipbookComponent resolves non-null -- see bBaseSpriteLocationCaptured/ApplyFeetOffsetCorrection. */
+	FVector BaseSpriteRelativeLocation = FVector::ZeroVector;
+
+	/** Guards the one-time BaseSpriteRelativeLocation capture -- CachedFlipbookComponent itself resolves lazily in Tick (not BeginPlay), so this can't just check "is CachedFlipbookComponent set yet" the first time, since that's also the frame it resolves. */
+	bool bBaseSpriteLocationCaptured = false;
+
+	/** Called once per Tick (after flipbook selection/CachedFlipbookComponent resolution): sets the flipbook component's relative Z to BaseSpriteRelativeLocation.Z plus whichever of WalkFeetOffsetCorrection/AttackFeetOffsetCorrection/ShootDrawFeetOffsetCorrection/ShootLoopFeetOffsetCorrection matches the currently-showing flipbook (0/Idle if none match), so every state's feet land at the same world-space contact height regardless of which is currently showing. No-ops entirely if CachedFlipbookComponent is null (PlaceholderMesh-only subclasses). */
+	void ApplyFeetOffsetCorrection();
 
 	EEnemyShootPhase ShootPhase = EEnemyShootPhase::None;
 

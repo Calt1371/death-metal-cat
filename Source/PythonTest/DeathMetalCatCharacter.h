@@ -176,6 +176,7 @@ protected:
 	 * as normal gun fire does -- no damage bonus for "powerful rainbow laser eyes" was requested
 	 * beyond the visual, so none was added; flag it if you want the ultimate's attack to hit harder.
 	 */
+	UFUNCTION(BlueprintCallable, Category = "Rage")
 	void HandleFancyAttack();
 
 	/**
@@ -351,6 +352,19 @@ protected:
 
 	/** Per-tick hue-cycle and drop-in animation for the active beam effect actor -- no-ops once RageBeamActor has been destroyed (its lifespan already expired). */
 	void UpdateRageBeamEffect(float DeltaSeconds);
+
+	/**
+	 * Spawns (or repositions, if already created) the Fancy Attack laser: a thin cylinder mesh using
+	 * the same M_RainbowBeam material as the ultimate's sky-beam, stretched from BeamStart to BeamEnd
+	 * and hue-cycled/faded out over FancyAttackBeamLifetime via UpdateFancyAttackBeamEffect. Called
+	 * from FireShotTrace only while bIsTransformed, reusing that same call's already-computed hitscan
+	 * geometry (BeamEnd is the actual hit location if something was hit, or the max-range point
+	 * otherwise) so the visual always matches exactly where the shot really went.
+	 */
+	void SpawnFancyAttackBeam(const FVector& BeamStart, const FVector& BeamEnd);
+
+	/** Per-tick hue-cycle + fade-out for the active Fancy Attack beam -- no-ops entirely while bFancyAttackBeamActive is false. */
+	void UpdateFancyAttackBeamEffect(float DeltaSeconds);
 
 	/** Picks Idle/Walk/Run/Jump/Dodge/Dash/Block/SwordAttack/Shoot based on current state, and flips the sprite to face travel direction. */
 	void UpdateAnimation();
@@ -1190,6 +1204,26 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
 	float RageBeamHueCycleSpeed = 360.f;
 
+	/** Vertical offset (uu) above GetActorLocation() the Fancy Attack laser starts from -- tuned to land near the mount's glowing eye/horn in FancyAttackFlipbook's art, not the actor's capsule-center origin. Placeholder value, verify against the sprite in PIE and retune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float FancyAttackBeamEyeHeight = 60.f;
+
+	/** Horizontal offset (uu), in the current facing direction, added on top of FancyAttackBeamEyeHeight so the laser visually originates just in front of the mount's face rather than from inside its body. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float FancyAttackBeamForwardOffset = 30.f;
+
+	/** Radius (uu) of the Fancy Attack laser's cylinder mesh. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float FancyAttackBeamThickness = 8.f;
+
+	/** How long (seconds) the Fancy Attack laser stays visible (hue-cycling, fading out) before hiding -- a quick zap, not a sustained beam, since FireShotTrace's damage/hit already resolves instantly. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float FancyAttackBeamLifetime = 0.2f;
+
+	/** Degrees per second the Fancy Attack laser's color cycles through the hue wheel -- faster than RageBeamHueCycleSpeed since this beam is on screen so much more briefly. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
+	float FancyAttackBeamHueCycleSpeed = 720.f;
+
 	/** True while riding Fancy Pants (the 10-second ultimate window) -- UpdateAnimation swaps Idle/Run for FancyIdle/FancyGallop, and HandleShootStarted repurposes Gun Fire into the laser attack, while this is true. */
 	UPROPERTY(BlueprintReadOnly, Category = "Rage")
 	bool bIsTransformed = false;
@@ -1307,6 +1341,18 @@ private:
 	bool bRageBeamActive = false;
 
 	float RageBeamStartTime = 0.f;
+
+	/** Lazily created the first time the Fancy Attack laser fires, then reused (repositioned/rescaled/re-lifetimed) every shot -- same reasoning as RageBeamMeshComponent. */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> FancyAttackBeamMeshComponent;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> FancyAttackBeamMID;
+
+	/** True for FancyAttackBeamLifetime seconds after SpawnFancyAttackBeam fires; UpdateFancyAttackBeamEffect no-ops entirely while false. */
+	bool bFancyAttackBeamActive = false;
+
+	float FancyAttackBeamStartTime = 0.f;
 
 	/** True while FancyAttackFlipbook is protected from being overwritten by UpdateAnimation's Idle/Gallop branch -- see ClearFancyAttackState. */
 	bool bIsPlayingFancyAttack = false;

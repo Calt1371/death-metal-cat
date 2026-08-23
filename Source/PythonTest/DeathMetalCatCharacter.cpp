@@ -946,6 +946,72 @@ void ADeathMetalCatCharacter::UpdateRageBeamEffect(float DeltaSeconds)
 	}
 }
 
+void ADeathMetalCatCharacter::SpawnFancyAttackBeam(const FVector& BeamStart, const FVector& BeamEnd)
+{
+	if (!FancyAttackBeamMeshComponent)
+	{
+		FancyAttackBeamMeshComponent = NewObject<UStaticMeshComponent>(this, TEXT("FancyAttackBeamMesh"));
+		FancyAttackBeamMeshComponent->SetupAttachment(RootComponent);
+		FancyAttackBeamMeshComponent->RegisterComponent();
+		FancyAttackBeamMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		FancyAttackBeamMeshComponent->SetCastShadow(false);
+		FancyAttackBeamMeshComponent->SetMobility(EComponentMobility::Movable);
+
+		if (UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+		{
+			FancyAttackBeamMeshComponent->SetStaticMesh(CylinderMesh);
+		}
+
+		if (UMaterialInterface* BeamMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Characters/DeathMetalCat/Materials/M_RainbowBeam.M_RainbowBeam")))
+		{
+			FancyAttackBeamMID = UMaterialInstanceDynamic::Create(BeamMaterial, this);
+			FancyAttackBeamMeshComponent->SetMaterial(0, FancyAttackBeamMID);
+		}
+	}
+
+	// /Engine/BasicShapes/Cylinder spans +/-50uu on every axis at scale 1 -- stretch its own Z to
+	// exactly span BeamStart..BeamEnd, then rotate that Z axis to point the right way. Reused (moved/
+	// rescaled/re-oriented) every shot rather than respawned, same pattern as RageBeamMeshComponent.
+	const FVector Delta = BeamEnd - BeamStart;
+	const float Length = Delta.Size();
+	const FVector Direction = (Length > KINDA_SMALL_NUMBER) ? Delta / Length : FVector::ForwardVector;
+	const FVector Midpoint = (BeamStart + BeamEnd) * 0.5f;
+
+	FancyAttackBeamMeshComponent->SetWorldLocation(Midpoint);
+	FancyAttackBeamMeshComponent->SetWorldRotation(FRotationMatrix::MakeFromZ(Direction).Rotator());
+	const float DiameterScale = (FancyAttackBeamThickness * 2.f) / 100.f;
+	FancyAttackBeamMeshComponent->SetRelativeScale3D(FVector(DiameterScale, DiameterScale, Length / 100.f));
+	FancyAttackBeamMeshComponent->SetVisibility(true);
+
+	bFancyAttackBeamActive = true;
+	FancyAttackBeamStartTime = GetWorld()->GetTimeSeconds();
+}
+
+void ADeathMetalCatCharacter::UpdateFancyAttackBeamEffect(float DeltaSeconds)
+{
+	if (!bFancyAttackBeamActive || !FancyAttackBeamMeshComponent)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - FancyAttackBeamStartTime;
+	const float Alpha = (FancyAttackBeamLifetime > 0.f) ? FMath::Clamp(Elapsed / FancyAttackBeamLifetime, 0.f, 1.f) : 1.f;
+
+	if (FancyAttackBeamMID)
+	{
+		const float HueDegrees = FMath::Fmod(Elapsed * FancyAttackBeamHueCycleSpeed, 360.f);
+		const FLinearColor CycledColor = FLinearColor::MakeFromHSV8(static_cast<uint8>((HueDegrees / 360.f) * 255.f), 255, 255);
+		FancyAttackBeamMID->SetVectorParameterValue(TEXT("BeamColor"), CycledColor);
+		FancyAttackBeamMID->SetScalarParameterValue(TEXT("BeamOpacity"), 1.f - Alpha);
+	}
+
+	if (Alpha >= 1.f)
+	{
+		bFancyAttackBeamActive = false;
+		FancyAttackBeamMeshComponent->SetVisibility(false);
+	}
+}
+
 void ADeathMetalCatCharacter::RecalculateXPToNextLevel()
 {
 	XPToNextLevel = CurrentLevel * XPPerLevelBase;
@@ -1818,6 +1884,16 @@ void ADeathMetalCatCharacter::FireShotTrace()
 		UE_LOG(LogTemp, Warning, TEXT("Gun fire hit nothing (traced full range %f)"), MaxTraceRange);
 	}
 
+	if (bIsTransformed)
+	{
+		// Reuses this exact same shot's Start/FacingSign/End/Hit -- the laser always visually
+		// matches exactly where the shot really went, including landing short on an actual hit
+		// rather than always reaching MaxTraceRange.
+		const FVector BeamOrigin = Start + FVector(0.f, 0.f, FancyAttackBeamEyeHeight) + FVector(FacingSign * FancyAttackBeamForwardOffset, 0.f, 0.f);
+		const FVector BeamTarget = bHit ? Hit.Location : End;
+		SpawnFancyAttackBeam(BeamOrigin, BeamTarget);
+	}
+
 	bIsShooting = true;
 	GetWorldTimerManager().SetTimer(ShootTimerHandle, this, &ADeathMetalCatCharacter::ClearShootingState, FireCooldown, false);
 }
@@ -1872,6 +1948,11 @@ void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 	if (bRageBeamActive)
 	{
 		UpdateRageBeamEffect(DeltaSeconds);
+	}
+
+	if (bFancyAttackBeamActive)
+	{
+		UpdateFancyAttackBeamEffect(DeltaSeconds);
 	}
 
 	if (bJumpDistanceTestActive)

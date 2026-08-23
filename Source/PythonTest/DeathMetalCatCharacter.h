@@ -28,7 +28,6 @@ struct FHitResult;
 enum class EShootPhase : uint8
 {
 	None,
-	Drawing,
 	HoldFiring,
 };
 
@@ -201,13 +200,12 @@ protected:
 	/** Bound to the ShootAction's Completed/Canceled events: marks the button released. */
 	void HandleShootReleased(const FInputActionValue& Value);
 
-	/** Shows the draw pose (from the regular Shoot row), then arms a timer that calls BeginHoldFireLoop() once it's done. */
-	void BeginDraw();
-
 	/**
-	 * Timer callback from BeginDraw(): switches the sprite to the dedicated FB_DeathMetalCat_HoldFire
-	 * flipbook and plays it looping (engine-driven, not manual frame-index jumping -- that flipbook's
-	 * own frames already cycle through the muzzle-flash variations), then fires the first shot.
+	 * Called directly from HandleShootStarted (no separate draw/windup phase -- see
+	 * FB_DeathMetalCat_Shoot's own removal note on HoldFireFlipbook): switches the sprite straight
+	 * to the dedicated FB_DeathMetalCat_HoldFire flipbook and plays it looping (engine-driven, not
+	 * manual frame-index jumping -- that flipbook's own frames already cycle through the
+	 * muzzle-flash variations), then fires the first shot.
 	 */
 	void BeginHoldFireLoop();
 
@@ -246,9 +244,6 @@ protected:
 
 	/** Timer callback: restores MoveComp->GravityScale to DefaultGravityScale, ending the air-fire float window. */
 	void ClearAirFireFloat();
-
-	/** Sets the sprite to ShootFlipbook (once) and pins it to the given frame index, code-driven like Jump's. */
-	void SetShootFrame(int32 FrameIndex, const TCHAR* Reason);
 
 	/**
 	 * Unconditionally clears all shoot-related state: ShootAnimPhase back to None, bIsShooting
@@ -625,16 +620,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> DodgeFlipbook;
 
-	/** Shown briefly for the quick-draw pose at the start of a shoot sequence (frame index 2 -- see ShootFrame_Draw). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
-	TObjectPtr<UPaperFlipbook> ShootFlipbook;
-
 	/**
 	 * Dedicated held-fire loop: a steady gun-extended stance with muzzle-flash variations across
-	 * its 4 frames, played looping for the duration of a hold once the initial draw finishes.
-	 * Separate art from ShootFlipbook -- that row's frames don't include a pose that stays fully
-	 * extended while flashing, which is what made reusing it for held-fire look like a repeated
-	 * draw motion; see git history for the investigation.
+	 * its 4 frames, played looping for the entire duration of a hold, starting immediately on
+	 * press. FB_DeathMetalCat_Shoot (the old draw-pose row this used to hand off from after a brief
+	 * windup) has been fully removed -- its frames didn't include a pose that stays fully extended
+	 * while flashing, which made reusing it for held-fire look like a repeated draw motion, and the
+	 * windup itself was the source of a visible flash-then-swap the player could see on every shot.
+	 * See git history for both the original investigation and the removal.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> HoldFireFlipbook;
@@ -1095,14 +1088,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
 	float GunTraceRadius = 12.f;
 
-	/**
-	 * How long the quick draw pose (frame index 2) shows before the hold-fire loop takes over. Not
-	 * part of the original single-shot spec -- needed to implement "draws fast" as an actual
-	 * visible beat rather than an instant snap. Kept short on purpose. Placeholder value, tune freely.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "GunFire", meta = (ClampMin = "0"))
-	float DrawDuration = 0.1f;
-
 	/** True for FireCooldown seconds after a shot is fired; blocks re-triggering. */
 	UPROPERTY(BlueprintReadOnly, Category = "GunFire")
 	bool bIsShooting = false;
@@ -1360,7 +1345,6 @@ private:
 	FTimerHandle FancyAttackTimerHandle;
 
 	FTimerHandle ShootTimerHandle;
-	FTimerHandle ShootDrawTimerHandle;
 
 	/** MoveComp->GravityScale as of BeginPlay, before any air-fire float has ever touched it -- the value ApplyAirFireFloat multiplies down and ClearAirFireFloat restores back to. */
 	float DefaultGravityScale = 1.f;

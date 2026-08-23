@@ -1560,17 +1560,6 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	}
 }
 
-namespace
-{
-	// FB_DeathMetalCat_Shoot frame roles (only the draw pose is still used from this row -- the
-	// held-fire loop now comes from the dedicated FB_DeathMetalCat_HoldFire flipbook instead;
-	// see HoldFireFlipbook's doc comment for why):
-	//   [2] arms bent/compact, gun pulled in close to the body -- the one frame visually distinct
-	//       from the other three (which are all full-extension variants); read as the character
-	//       mid-raise, not yet at full extension, so used as the "draw" pose
-	constexpr int32 ShootFrame_Draw = 2;
-}
-
 void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
 {
 	if (bIsTransformed)
@@ -1583,23 +1572,17 @@ void ADeathMetalCatCharacter::HandleShootStarted(const FInputActionValue& Value)
 
 	bIsHoldingShootButton = true;
 
-	// TEMP diagnostic: is Started re-firing mid-hold (it shouldn't -- EnhancedInput's Started only
-	// fires once per press), which would explain BeginDraw() (and its draw frame) recurring.
-	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootStarted  ShootAnimPhase(before)=%d"),
-		GetWorld()->GetTimeSeconds(), (int32)ShootAnimPhase);
-
 	// Defensive: don't trust that HandleShootReleased always cleaned up properly. Rapid
 	// press/release timing (or a release racing a movement input) is exactly where that
 	// assumption broke before -- ShootAnimPhase could be left stuck non-None from a prior press,
-	// silently blocking every future BeginDraw() forever. Force a clean slate before proceeding
-	// whenever we find state left over, rather than only handling the case we expect.
+	// silently blocking every future BeginHoldFireLoop() forever. Force a clean slate before
+	// proceeding whenever we find state left over, rather than only handling the case we expect.
 	if (ShootAnimPhase != EShootPhase::None)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] HandleShootStarted found stale ShootAnimPhase=%d, forcing reset"), (int32)ShootAnimPhase);
 		ResetShootState();
 	}
 
-	BeginDraw();
+	BeginHoldFireLoop();
 }
 
 void ADeathMetalCatCharacter::HandleShootHeld(const FInputActionValue& Value)
@@ -1612,16 +1595,11 @@ void ADeathMetalCatCharacter::HandleShootHeld(const FInputActionValue& Value)
 		return;
 	}
 
-	// TEMP diagnostic: prints every Triggered tick's guard inputs, to see exactly why it does or
-	// doesn't proceed to FireShotTrace() each time.
-	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootHeld  bIsHoldingShootButton=%d  ShootAnimPhase=%d  bIsShooting=%d"),
-		GetWorld()->GetTimeSeconds(), bIsHoldingShootButton, (int32)ShootAnimPhase, bIsShooting);
-
-	// Triggered fires every tick while held, including the same tick as Started. Only attempt a
-	// repeat shot once the hold-fire loop has taken over from the initial draw -- this both paces
-	// repeated fire correctly and skips the redundant same-tick call from Started, since
-	// ShootAnimPhase is Drawing (not HoldFiring) at that point. The first shot of a hold fires
-	// from BeginHoldFireLoop() itself, not from here.
+	// Triggered fires every tick while held, including the same tick as Started -- the bIsShooting
+	// check (still on cooldown from the first shot BeginHoldFireLoop() just fired) is what skips
+	// that redundant same-tick call, not ShootAnimPhase (which is already HoldFiring by this point
+	// now that Started transitions straight into it with no separate draw phase). The first shot of
+	// a hold fires from BeginHoldFireLoop() itself, not from here.
 	if (!bIsHoldingShootButton || ShootAnimPhase != EShootPhase::HoldFiring || bIsShooting)
 	{
 		return;
@@ -1632,28 +1610,20 @@ void ADeathMetalCatCharacter::HandleShootHeld(const FInputActionValue& Value)
 
 void ADeathMetalCatCharacter::HandleShootReleased(const FInputActionValue& Value)
 {
-	// TEMP diagnostic: is this firing spuriously mid-hold (Completed/Canceled should only fire
-	// once, on actual release) -- if so, that would explain ShootAnimPhase getting reset to None
-	// while still held, causing HandleShootStarted to treat the next Triggered/Started as a fresh
-	// press and restart the draw, which would produce exactly the reported draw/flash bounce.
-	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  HandleShootReleased  ShootAnimPhase(before)=%d"),
-		GetWorld()->GetTimeSeconds(), (int32)ShootAnimPhase);
-
 	bIsHoldingShootButton = false;
 
-	// Unconditional cleanup regardless of which phase we were in when released. The previous
-	// version only reset ShootAnimPhase for the (now-removed) Aiming case, on the assumption an
-	// in-flight draw sequence would always finish naturally and clean up after itself -- but if
-	// that sequence's own fire call bailed out early on its bIsShooting guard (which can happen
-	// on rapid taps, since a prior shot's cooldown may still be active), nothing was ever left to
-	// un-stick ShootAnimPhase, and it stayed stuck at Drawing indefinitely -- the actual freeze
-	// bug, confirmed via the diagnostic logs.
+	// Unconditional cleanup regardless of which phase we were in when released -- an earlier
+	// version only reset ShootAnimPhase for a since-removed case, on the assumption the in-flight
+	// sequence would always finish naturally and clean up after itself; a fire call that bailed
+	// early on its own bIsShooting guard (which can happen on rapid taps, since a prior shot's
+	// cooldown may still be active) left nothing to un-stick ShootAnimPhase otherwise, and it
+	// stayed stuck non-None indefinitely -- a real freeze bug, confirmed via diagnostic logging at
+	// the time (since removed along with the draw phase it was investigating).
 	ResetShootState();
 }
 
 void ADeathMetalCatCharacter::ResetShootState()
 {
-	GetWorldTimerManager().ClearTimer(ShootDrawTimerHandle);
 	GetWorldTimerManager().ClearTimer(ShootTimerHandle);
 	ShootAnimPhase = EShootPhase::None;
 	bIsShooting = false;
@@ -1698,13 +1668,6 @@ void ADeathMetalCatCharacter::ClearFancyAttackState()
 	bIsPlayingFancyAttack = false;
 }
 
-void ADeathMetalCatCharacter::BeginDraw()
-{
-	ShootAnimPhase = EShootPhase::Drawing;
-	SetShootFrame(ShootFrame_Draw, TEXT("draw"));
-	GetWorldTimerManager().SetTimer(ShootDrawTimerHandle, this, &ADeathMetalCatCharacter::BeginHoldFireLoop, DrawDuration, false);
-}
-
 void ADeathMetalCatCharacter::BeginHoldFireLoop()
 {
 	ShootAnimPhase = EShootPhase::HoldFiring;
@@ -1712,8 +1675,6 @@ void ADeathMetalCatCharacter::BeginHoldFireLoop()
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	const bool bAirborne = MoveComp && MoveComp->IsFalling();
 	UpdateHoldFireFlipbook(bAirborne, bAirborne && bIsHoldingDownInput);
-
-	UE_LOG(LogTemp, Warning, TEXT("[SHOOT STATE] t=%f  BeginHoldFireLoop"), GetWorld()->GetTimeSeconds());
 
 	FireShotTrace();
 }
@@ -1898,32 +1859,6 @@ void ADeathMetalCatCharacter::FireShotTrace()
 	GetWorldTimerManager().SetTimer(ShootTimerHandle, this, &ADeathMetalCatCharacter::ClearShootingState, FireCooldown, false);
 }
 
-void ADeathMetalCatCharacter::SetShootFrame(int32 FrameIndex, const TCHAR* Reason)
-{
-	UPaperFlipbookComponent* SpriteComp = GetSprite();
-	if (!SpriteComp || !ShootFlipbook)
-	{
-		return;
-	}
-
-	if (CurrentFlipbook != ShootFlipbook)
-	{
-		SpriteComp->SetFlipbook(ShootFlipbook);
-		SpriteComp->Stop();
-		CurrentFlipbook = ShootFlipbook;
-	}
-
-	// TEMP diagnostic: every actual frame-index write, with why and when, to see the real
-	// state-machine sequence during a hold instead of guessing at it.
-	UE_LOG(LogTemp, Warning, TEXT("[SHOOT FRAME] t=%f  frame=%d  reason=%s  (was %d)"),
-		GetWorld()->GetTimeSeconds(), FrameIndex, Reason, SpriteComp->GetPlaybackPositionInFrames());
-
-	if (SpriteComp->GetPlaybackPositionInFrames() != FrameIndex)
-	{
-		SpriteComp->SetPlaybackPositionInFrames(FrameIndex, false);
-	}
-}
-
 void ADeathMetalCatCharacter::ClearShootingState()
 {
 	bIsShooting = false;
@@ -1989,11 +1924,11 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 	}
 	else if (ShootAnimPhase != EShootPhase::None)
 	{
-		// Draw (event-driven, via SetShootFrame) and HoldFiring (engine-driven looping playback,
-		// started once in BeginHoldFireLoop) both manage their own flipbook/frame state -- nothing
-		// to do here except make sure nothing else stomps it while a shoot sequence is in
-		// progress. Note this checks ShootAnimPhase, not bIsShooting: bIsShooting is only the
-		// short per-shot fire-rate gate now, not the (much longer) whole-hold animation window.
+		// HoldFiring manages its own flipbook state (engine-driven looping playback, started once
+		// in BeginHoldFireLoop) -- nothing to do here except make sure nothing else stomps it while
+		// a shoot sequence is in progress. Note this checks ShootAnimPhase, not bIsShooting:
+		// bIsShooting is only the short per-shot fire-rate gate, not the (much longer) whole-hold
+		// animation window.
 	}
 	else if (bIsPlayingFancyAttack)
 	{

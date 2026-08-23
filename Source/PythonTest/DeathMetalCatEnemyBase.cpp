@@ -246,6 +246,15 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 		{
 			DesiredFlipbook = IdleFlipbook;
 		}
+		else if (WalkFlipbook)
+		{
+			// No dedicated idle art (DeathBotHeavy/Crawler's source sheets only cover Walk/Attack) --
+			// without this fallback the actor shows nothing at all until the player first comes
+			// close enough to trigger Walk or Attack, reading as a blank/invisible enemy the moment
+			// it's placed. Holding on a static Walk frame at rest is a reasonable stand-in for a
+			// missing idle pose.
+			DesiredFlipbook = WalkFlipbook;
+		}
 
 		// TEMPORARY debug logging for the "always left leg" walk-animation investigation --
 		// remove once resolved.

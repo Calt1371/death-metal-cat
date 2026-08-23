@@ -11,6 +11,7 @@
 #include "PaperFlipbookComponent.h"
 #include "PaperFlipbook.h"
 #include "EnemyProjectile.h"
+#include "RoomShell.h"
 
 ADeathMetalCatEnemyBase::ADeathMetalCatEnemyBase()
 {
@@ -102,6 +103,17 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 		Loc.Y = PlayerLoc.Y;
 		Loc.Z = PlayerLoc.Z;
 		SetActorLocation(Loc);
+	}
+
+	// Room-barrier enemy tracking: spawn_encounter_actors.py already attaches every spawned enemy
+	// to its room's RoomShell (same as floors/walls/markers), so finding it here needs no separate
+	// wiring from the spawn script itself. An enemy placed loose (not attached to any RoomShell)
+	// simply never registers -- OwningRoomShell stays null and TakeDamage's death block skips the
+	// NotifyEnemyDefeated call, same no-op-if-absent pattern as CachedFlipbookComponent.
+	OwningRoomShell = Cast<ARoomShell>(GetAttachParentActor());
+	if (OwningRoomShell)
+	{
+		OwningRoomShell->RegisterEnemy();
 	}
 
 	// Opt-in flight mode (see bFliesFreely's own comment) -- switches off the normal
@@ -378,6 +390,15 @@ float ADeathMetalCatEnemyBase::TakeDamage(float DamageAmount, FDamageEvent const
 	if (Health <= 0.f)
 	{
 		bIsDead = true;
+
+		// Same "exactly once per real kill, unaffected by however many times this enemy
+		// subsequently respawns" reasoning as the XP award right below -- a cleared room must stay
+		// cleared even once the testing-convenience respawn brings enemies back, so this is
+		// deliberately never balanced by a re-registration call anywhere in HandleRespawn.
+		if (OwningRoomShell)
+		{
+			OwningRoomShell->NotifyEnemyDefeated();
+		}
 
 		// XP goes to whoever actually landed the killing blow -- DamageCauser is exactly that
 		// (ApplyDamage's call sites in ADeathMetalCatCharacter pass `this` as DamageCauser), so no

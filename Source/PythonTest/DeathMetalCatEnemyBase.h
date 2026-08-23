@@ -11,6 +11,7 @@ class ADeathMetalCatCharacter;
 class UPaperFlipbookComponent;
 class UPaperFlipbook;
 class AEnemyProjectile;
+class ARoomShell;
 
 /** Internal-only (not exposed to Blueprint) phase tracking for the ranged-attack burst sequence -- same pattern as ADeathMetalCatCharacter's own EShootPhase. */
 enum class EEnemyShootPhase : uint8
@@ -298,6 +299,10 @@ private:
 	/** Cached once in BeginPlay via UGameplayStatics::GetPlayerCharacter -- same lookup already used there for the plane-snap, reused here for detection/chase/contact-damage each Tick instead of querying every frame. A plain UPROPERTY pointer, so it's automatically nulled by GC if the player is ever destroyed. */
 	UPROPERTY(Transient)
 	TObjectPtr<ADeathMetalCatCharacter> CachedPlayerCharacter;
+
+	/** Cached once in BeginPlay via Cast<ARoomShell>(GetAttachParentActor()) -- spawn_encounter_actors.py already attaches every spawned enemy to its room's RoomShell, same as floors/walls/markers, so this needs no separate wiring. Null for an enemy that isn't attached to any RoomShell (e.g. one placed loose in the outliner) -- RegisterEnemy/NotifyEnemyDefeated calls are skipped entirely in that case, not a hard requirement to have one. */
+	UPROPERTY(Transient)
+	TObjectPtr<ARoomShell> OwningRoomShell;
 
 	/** World time (GetWorld()->GetTimeSeconds()) contact damage was last applied; compared against ContactDamageCooldown. Starts far enough negative that the very first contact always damages immediately; reset to that same sentinel in HandleDeath so a respawned enemy doesn't inherit a stale cooldown from its previous life. */
 	float LastContactDamageTime = -1000.f;

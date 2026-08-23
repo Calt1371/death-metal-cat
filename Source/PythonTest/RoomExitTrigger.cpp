@@ -4,6 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "DeathMetalCatCharacter.h"
 #include "RoomProgressionManager.h"
+#include "RoomShell.h"
 
 ARoomExitTrigger::ARoomExitTrigger()
 {
@@ -25,6 +26,19 @@ void ARoomExitTrigger::OnTriggerBeginOverlap(UPrimitiveComponent* OverlappedComp
 	if (bHasFired || !OtherActor || !OtherActor->IsA<ADeathMetalCatCharacter>())
 	{
 		return;
+	}
+
+	// Belt-and-suspenders against ARoomBarrier's own physical blocking collision -- refuses to fire
+	// the transition while this room isn't cleared and the gate is on, so the player can never
+	// advance past a locked door even if they somehow squeeze past the barrier's collision volume.
+	// Off (the default) or a RoomShell-less trigger (e.g. one not yet wired into this system)
+	// behaves exactly as before this system existed -- fires unconditionally.
+	if (ARoomShell* OwningRoomShell = Cast<ARoomShell>(GetAttachParentActor()))
+	{
+		if (ARoomShell::IsRoomBarrierGateEnabled() && !OwningRoomShell->IsRoomCleared())
+		{
+			return;
+		}
 	}
 
 	ARoomProgressionManager* Manager = Cast<ARoomProgressionManager>(UGameplayStatics::GetActorOfClass(this, ARoomProgressionManager::StaticClass()));

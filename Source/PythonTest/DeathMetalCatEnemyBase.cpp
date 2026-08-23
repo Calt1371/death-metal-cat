@@ -234,7 +234,11 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 	if (CachedFlipbookComponent && ShootPhase == EEnemyShootPhase::None)
 	{
 		UPaperFlipbook* DesiredFlipbook = CachedFlipbookComponent->GetFlipbook();
-		if (bIsAdvancing && WalkFlipbook)
+		if (bIsInMeleeRange && AttackFlipbook)
+		{
+			DesiredFlipbook = AttackFlipbook;
+		}
+		else if (bIsAdvancing && WalkFlipbook)
 		{
 			DesiredFlipbook = WalkFlipbook;
 		}

@@ -266,6 +266,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
 	TObjectPtr<UPaperFlipbook> WalkFlipbook = nullptr;
 
+	/** Flipbook shown while within MeleeRange dealing contact damage (see the three-band breakdown in the class comment). Optional -- unset by default so existing melee-range behavior on subclasses with no dedicated attack art (BP_EnemyDeathBotWalking, BP_EnemyDeathBotFlying, both of which attack at range instead) is unchanged; falls back to Idle/Walk selection same as before. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
+	TObjectPtr<UPaperFlipbook> AttackFlipbook = nullptr;
+
 	/** Single-frame windup pose shown once at the start of a ranged-attack burst, before the loop takes over. Optional -- if unset, BeginRangedAttack skips straight to the loop with no windup delay. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual")
 	TObjectPtr<UPaperFlipbook> ShootDrawFlipbook = nullptr;

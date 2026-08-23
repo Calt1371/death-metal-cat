@@ -324,6 +324,13 @@ protected:
 	 */
 	void HandleUltimateActivate(const FInputActionValue& Value);
 
+public:
+	/** Input-agnostic entry point sharing HandleUltimateActivate's own guard/trigger logic -- exists so the ultimate sequence can be triggered directly (Python/editor scripting, automation) without needing a real Enhanced Input event. Returns false if the guard rejects it (not full / already transformed / mid-fade). */
+	UFUNCTION(BlueprintCallable, Category = "Rage")
+	bool TryActivateUltimate();
+
+protected:
+
 	/** Called every Tick while bIsFadingOutForUltimate: shrinks the sprite's scale toward 0 over UltimateFadeOutDuration, then calls BeginUltimateTransformation once it reaches 0. */
 	void UpdateUltimateFadeOut(float DeltaSeconds);
 
@@ -1163,7 +1170,7 @@ public:
 
 	/** How long (seconds) the "riding Fancy Pants" transformed state lasts once activated. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
-	float UltimateDuration = 10.f;
+	float UltimateDuration = 12.f;
 
 	/**
 	 * How long (seconds) regular Cayde's sprite takes to shrink away once the ultimate is activated,

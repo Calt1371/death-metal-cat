@@ -806,10 +806,15 @@ void ADeathMetalCatCharacter::AddRage(float DamageAmount, float GainPerDamage)
 
 void ADeathMetalCatCharacter::HandleUltimateActivate(const FInputActionValue& Value)
 {
+	TryActivateUltimate();
+}
+
+bool ADeathMetalCatCharacter::TryActivateUltimate()
+{
 	if (!IsRageFull() || bIsTransformed || bIsFadingOutForUltimate)
 	{
 		// Only usable once Rage is full, and can't be retriggered mid-sequence or mid-ride.
-		return;
+		return false;
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Ultimate activated -- beginning transformation sequence"));
@@ -818,6 +823,7 @@ void ADeathMetalCatCharacter::HandleUltimateActivate(const FInputActionValue& Va
 
 	bIsFadingOutForUltimate = true;
 	UltimateFadeOutStartTime = GetWorld()->GetTimeSeconds();
+	return true;
 }
 
 void ADeathMetalCatCharacter::UpdateUltimateFadeOut(float DeltaSeconds)

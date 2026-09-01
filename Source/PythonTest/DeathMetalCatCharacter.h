@@ -5,6 +5,7 @@
 #include "TimerManager.h"
 #include "DamageTypes.h"
 #include "QuipTypes.h"
+#include "ItemTypes.h"
 #include "DeathMetalCatCharacter.generated.h"
 
 class UInputAction;
@@ -692,6 +693,59 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UPaperFlipbook> FancyAttackFlipbook;
 
+	/**
+	 * Shown looping in place of IdleFlipbook while bIsCatNipActive and standing still -- part of the
+	 * "Super Cayde" Cat Nip moveset alongside CatNipWalkFlipbook/CatNipAttackFlipbook/
+	 * CatNipJumpFlipbook below. Sword Attack/Dodge/Block/etc. are still completely unaffected --
+	 * only Idle, Run, Gun Fire (CatNipAttackFlipbook overrides HoldFire, see its own doc comment),
+	 * and the airborne pose swap while Cat Nip is active. bIsTransformed still wins if somehow both
+	 * are active at once (FancyIdleFlipbook takes
+	 * priority) -- riding Fancy Pants already replaces the whole moveset, so it stays the more
+	 * dominant state -- see UpdateAnimation.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> CatNipIdleFlipbook;
+
+	/** Shown looping in place of RunFlipbook while bIsCatNipActive and moving -- Super Cayde has no separate walk-vs-run distinction (this project doesn't have one at baseline either, see UpdateAnimation's "Walk removed as a separate state" comment), one sheet covers both. See CatNipIdleFlipbook's own doc comment for the rest of the Cat Nip moveset. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> CatNipWalkFlipbook;
+
+	/** Shown for BOTH attack inputs while bIsCatNipActive -- in place of HoldFireFlipbook/AirShotAngledFlipbook/AirDownShotFlipbook for the Shoot input (UpdateHoldFireFlipbook, same pattern as FancyAttackFlipbook while riding Fancy Pants), and in place of SwordAttackFlipbook/SwordCombo2Flipbook/SwordCombo3Flipbook for the Attack input's base ground combo (StartSwordComboStage). There's only one Cat Nip attack sheet (a gun-fire pose -- Cayde is drawn holding his gun, sword sheathed on his back, in every Cat Nip flipbook), so it's Super Cayde's one attack visual regardless of which button triggers it. Uppy/Double Whammy/Spinny Down (the airborne/backward Attack-input special moves) keep their normal art -- no Cat Nip art exists for those. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> CatNipAttackFlipbook;
+
+	/**
+	 * Shown airborne while bIsCatNipActive, in place of JumpFlipbook -- unlike JumpFlipbook (a
+	 * 2-frame rising/falling pose pair explicitly driven by Velocity.Z, see UpdateAnimation), this
+	 * is a full multi-frame animated arc like every other Cat Nip flipbook, so it's just played
+	 * looping like Idle/Run rather than frame-locked to velocity -- there's no reliable way to know
+	 * which frame index of a full animated sequence corresponds to "rising" vs "falling" the way
+	 * JumpFlipbook's own two poses were explicitly authored to.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> CatNipJumpFlipbook;
+
+	/**
+	 * Pre-mirrored (per-cell horizontally flipped source art, not a runtime Scale.X mirror)
+	 * counterpart to CatNipJumpFlipbook -- confirmed live (2026-09-01) that Scale.X-based mirroring
+	 * doesn't reliably flip CatNipJumpFlipbook's render, so airborne Cat Nip picks between the two
+	 * assets directly by movement direction instead of relying on the sprite's general
+	 * velocity-based Scale.X flip the way every other flipbook in the game does. See UpdateAnimation.
+	 *
+	 * Counter-intuitively, THIS is the asset shown while moving RIGHT, not CatNipJumpFlipbook --
+	 * this project's Paper2D sprite rendering mirrors ALL raw RawAssets/Allies art relative to its
+	 * source PNG (the same systemic issue ue_fix_cayde_facing_flip.py's own docstring documents for
+	 * the base moveset), so the never-flipped CatNipJumpFlipbook actually renders facing LEFT, and
+	 * this pre-flipped-source asset renders facing RIGHT once that systemic mirror lands on top of
+	 * it. Don't rename or "fix" this pairing without re-confirming that mirror is still in effect.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation")
+	TObjectPtr<UPaperFlipbook> CatNipJumpFlipbookMirrored;
+
+	/** Frame index CatNipJumpFlipbook/CatNipJumpFlipbookMirrored starts playing from when Cayde first goes airborne -- the sheet's earlier frames are a grounded crouch/wind-up pose (per the design ask), not an airborne one, so starting at frame 0 would show him crouching while already in mid-air. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Animation", meta = (ClampMin = "0"))
+	int32 CatNipJumpStartFrame = 13;
+
 	// -- Dodge --
 
 	/**
@@ -1243,7 +1297,252 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rage")
 	void Debug_SetHoldFireForTest(bool bStart);
 
+	/** Dev/testing entry point: fires the Cat Nip depletion beam directly, without needing a full activate/wait/expire cycle -- same reasoning as TryActivateUltimate and the other Debug_ helpers (no LocalPlayer/EnhancedInputLocalPlayerSubsystem access from Python, and this also sidesteps the real-time wait a natural CatNipDuration expiry would need). */
+	UFUNCTION(BlueprintCallable, Category = "Items")
+	void Debug_ForceCatNipDepletionEffect();
+
+	/**
+	 * Dev/testing entry point: calls HandleRespawn() directly, same reason every other Debug_* entry
+	 * point exists -- lets editor/Python tooling verify the death-triggered reset (Scraps, every
+	 * Item*Bonus, Health/bIsDead) without needing to actually route through the real death-screen
+	 * "press any key to continue" input flow, which (like held Shoot input) can't be injected from
+	 * Python. Also runs whatever else HandleRespawn does (room reset, post-respawn i-frames, etc.) --
+	 * it's the exact same function real death uses, not a stripped-down copy.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Items")
+	void Debug_ForceRespawnForTest();
+
+	// -- Items / Scraps / Cat Nip --
+
+	/** In-game currency. No spend/shop mechanic exists yet -- just tracked and displayed on the HUD (see UGnarlyRankHUDWidget). Resets to 0 on death, same as Health/GnarlyRank/room progress -- see HandleRespawn. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	int32 Scraps = 0;
+
+	/** Adds Amount to Scraps (clamped so a negative Amount can never go below 0, though nothing currently grants negative Scraps). Called by AItemPickupCrate when its weighted drop table resolves to Scraps rather than a special item. */
+	UFUNCTION(BlueprintCallable, Category = "Items")
+	void AddScraps(int32 Amount);
+
+	/**
+	 * Single entry point AItemPickupCrate calls once its weighted drop table resolves to a special
+	 * item (everything in EPickupResultType except Scraps, which goes through AddScraps directly
+	 * instead) -- centralizes what each item actually does in one place rather than scattering
+	 * per-item logic across the crate class. The three heal items (ScratchPatch/NineLifeStim/
+	 * DeathDefier) heal a percentage of MaxHealth immediately; the six persistent stat items
+	 * (RazorFang/DeadshotRounds/SteelFur/FancyFeed/GnarlyAmp/MirrorClaw) each ADD to their own
+	 * running bonus below (multiple pickups of the same item stack additively, uncapped -- no
+	 * design reason found yet to cap them) and last until death, same reset rule as Scraps; CatNip
+	 * starts the 12-second invincibility window (see BeginCatNip).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Items")
+	void ResolvePickup(EPickupResultType Type);
+
+	/** Fraction of MaxHealth restored by ScratchPatch (the common/small heal tier). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0", ClampMax = "1"))
+	float ScratchPatchHealPercent = 0.15f;
+
+	/** Fraction of MaxHealth restored by NineLifeStim (the rare/high tier -- see AItemPickupCrate's drop weights, this is the one explicitly called out as "harder to find"). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0", ClampMax = "1"))
+	float NineLifeStimHealPercent = 0.35f;
+
+	/** Fraction of MaxHealth restored by DeathDefier (the large/uncommon tier). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0", ClampMax = "1"))
+	float DeathDefierHealPercent = 0.60f;
+
+	/** How much each RazorFang pickup adds to the sword-damage multiplier (RolledDamage *= 1 + ItemSwordDamageBonus, alongside GnarlyMultiplier/StrengthMultiplier in OnSwordHitboxBeginOverlap) -- stacks additively per pickup. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float RazorFangBonusPerPickup = 0.15f;
+
+	/** How much each DeadshotRounds pickup adds to the gun-damage multiplier (RolledDamage *= 1 + ItemGunDamageBonus, alongside DexterityMultiplier in FireShotTrace) -- stacks additively per pickup. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float DeadshotRoundsBonusPerPickup = 0.15f;
+
+	/** How much each SteelFur pickup adds directly to the damage-resistance fraction TakeDamage clamps to 0.9 (on top of Defense*DefenseResistPerPoint) -- "slightly" per the design ask, so a small flat bump rather than a big per-point attribute. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float SteelFurBonusPerPickup = 0.03f;
+
+	/** How many extra seconds each FancyFeed pickup adds to UltimateDuration when BeginUltimateTransformation next arms UltimateDurationTimerHandle. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float FancyFeedBonusPerPickup = 3.f;
+
+	/** How many extra points each GnarlyAmp pickup adds to GnarlyHitCount's per-hit increment in RegisterGnarlyHit (normally a flat +1) -- makes GnarlyRank climb faster for the rest of the run. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	int32 GnarlyAmpBonusPerPickup = 1;
+
+	/** How much each MirrorClaw pickup adds to ItemMirrorClawChance (see TakeDamage) -- a "small chance", so kept modest per stack. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0", ClampMax = "1"))
+	float MirrorClawChancePerPickup = 0.08f;
+
+	/** Running total from RazorFang pickups this run -- see ResolvePickup/OnSwordHitboxBeginOverlap. Resets to 0 on death (HandleRespawn). */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	float ItemSwordDamageBonus = 0.f;
+
+	/** Running total from DeadshotRounds pickups this run -- see ResolvePickup/FireShotTrace. Resets to 0 on death. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	float ItemGunDamageBonus = 0.f;
+
+	/** Running total from SteelFur pickups this run -- see ResolvePickup/TakeDamage. Resets to 0 on death. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	float ItemDefenseResistBonus = 0.f;
+
+	/** Running total from FancyFeed pickups this run -- see ResolvePickup/BeginUltimateTransformation. Resets to 0 on death. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	float ItemUltimateDurationBonus = 0.f;
+
+	/** Running total from GnarlyAmp pickups this run -- see ResolvePickup/RegisterGnarlyHit. Resets to 0 on death. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	int32 ItemGnarlyAmpBonus = 0;
+
+	/** Running total from MirrorClaw pickups this run (a chance [0-1], clamped in ResolvePickup so stacking many can never exceed a guaranteed deflect) -- see TakeDamage. Resets to 0 on death. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	float ItemMirrorClawChance = 0.f;
+
+	/** True for CatNipDuration seconds after picking up CatNip -- CanTakeDamage() reports false unconditionally while this is true (a fully separate invincibility source from bIsInvincible/dodge-i-frames, deliberately not sharing that flag/timer so the two can never cancel each other early -- see CanTakeDamage), UpdateAnimation swaps Idle to CatNipIdleFlipbook, GetSprite()'s tint changes to CatNipTintColor, and Tick applies passive contact damage to any enemy within touching distance. */
+	UPROPERTY(BlueprintReadOnly, Category = "Items")
+	bool bIsCatNipActive = false;
+
+	/** How long (seconds) Cat Nip's invincibility window lasts. Placeholder value, tune freely (the design ask specifies 12). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float CatNipDuration = 12.f;
+
+	/** Damage dealt automatically (via UGameplayStatics::ApplyDamage, same path everything else uses) to any enemy that touches Cayde while Cat Nip is active -- see UpdateCatNipContactDamage. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float CatNipContactDamage = 15.f;
+
+	/** Minimum seconds between contact-damage applications to the SAME enemy while Cat Nip is active (so standing inside an enemy doesn't deal damage 60+ times/sec) -- same cooldown-gating idea as ADeathMetalCatEnemyBase's own ContactDamageCooldown, just tracked per-enemy here via CatNipLastDamageTime since multiple enemies can be touching at once. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float CatNipContactDamageCooldown = 0.5f;
+
+	/** How close (uu, center-to-center) an enemy must be to count as "touching" Cayde for Cat Nip's passive contact damage -- compared against actual capsule-radius sums at runtime instead of a flat guess, see UpdateCatNipContactDamage. Small positive buffer added on top so it reads as a genuine touch, not an exact overlap. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float CatNipContactRadiusBuffer = 10.f;
+
+	/**
+	 * Sprite tint applied for the full Cat Nip duration as the simple visual "invincibility is
+	 * active" indicator (a Mario-star-style glow, per the design ask) -- reverted to
+	 * BaseSpriteTintColor (solo Cayde's own default tint, see its own doc comment below) the
+	 * moment Cat Nip ends. Kept well below full brightness (unlike a naive 1.0-channel gold):
+	 * confirmed live that Paper2D's sprite material renders SpriteColor through Emissive (expected
+	 * for an Unlit shading model, where BaseColor has no lighting to modulate it), so a
+	 * full-bright tint blooms out to a solid white blob rather than reading as a color tint at
+	 * all. Cut further (0.45/0.38/0.05 -> 0.12/0.10/0.012) after the design ask flagged Super
+	 * Cayde as still too bright -- confirmed live that the baked-in flame art's own bloom
+	 * plateaus well before this value (0.10 vs 0.06 read as visually identical), so going lower
+	 * only darkens Cayde's own body for no further bloom reduction; this is close to the floor of
+	 * what SpriteColor alone can fix. Flattened to match BaseSpriteTintColor's own flat 0.02/0.02/0.02
+	 * per the design ask, trading the gold hue for consistency with solo Cayde's tint. Placeholder
+	 * value, tune freely -- but keep components well under 1.0 if raising it.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items")
+	FLinearColor CatNipTintColor = FLinearColor(0.030f, 0.030f, 0.030f, 1.f);
+
+	/**
+	 * Default sprite tint for solo Cayde -- applied in BeginPlay and whatever EndCatNip reverts to,
+	 * replacing a literal opaque white. Same root cause as CatNipTintColor's own doc comment
+	 * (Unlit/Emissive-driven Paper2D material blooming badly once combined with this level's
+	 * dynamic auto-exposure): confirmed live (2026-08-25) that solo Cayde at full-bright white was
+	 * ALSO blowing out to a near-featureless blob, unrelated to Cat Nip entirely. Fixed here
+	 * (per-sprite tint) rather than by touching the camera's exposure/bloom settings, which was
+	 * tried first and reverted -- that affected the whole level's rendering, not just the
+	 * character. Flat neutral grey (not a color tint) so it dims brightness without shifting hue.
+	 * Placeholder value, tune freely -- cut further to 0.02 per the design ask.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items")
+	FLinearColor BaseSpriteTintColor = FLinearColor(0.02f, 0.02f, 0.02f, 1.f);
+
+	/**
+	 * How much taller Super Cayde's collision capsule is than solo Cayde's own capsule --
+	 * BeginCatNip/EndCatNip resize GetCapsuleComponent()'s half-height by this around a fixed
+	 * floor-contact point (same "grow/shrink while keeping feet planted" idiom ACharacter's own
+	 * Crouch/UnCrouch uses). Matches CatNipIdle/Walk/Attack/Jump's own doubled visual scale (PPU
+	 * 0.75 vs regular Idle's 1.5) -- Super Cayde is meant to read as an entirely different, bigger
+	 * character while active, not solo Cayde's own capsule with a bigger sprite loosely draped over
+	 * it. Placeholder value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0.1"))
+	float CatNipCapsuleHalfHeightScale = 2.0f;
+
+	/**
+	 * How much wider Super Cayde's collision capsule is than solo Cayde's own -- deliberately left
+	 * at 1.0 (unchanged), NOT matched to CatNipCapsuleHalfHeightScale/the visual doubling. Originally
+	 * scaled both radius and half-height together, but that made the capsule dramatically wider too
+	 * (34uu -> 68uu radius), which read live as a phantom "invisible wall" -- Super Cayde was
+	 * colliding with Room1's geometry (the far-left building especially) from much further away than
+	 * solo Cayde ever did, well before the visual sprite looked like it should be blocked yet. The
+	 * vertical sinking bug this capsule resize was fixing was purely a floor-contact (half-height)
+	 * problem, so only that axis needs to grow -- widening navigation-relevant horizontal collision
+	 * to match the visual isn't worth reintroducing that bug for. Placeholder value, tune freely if
+	 * Super Cayde's hitbox ever needs to read as visibly wider too.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0.1"))
+	float CatNipCapsuleRadiusScale = 1.0f;
+
+	/**
+	 * How long (seconds) the Cat Nip depletion effect actor lives before self-destructing -- see
+	 * SpawnCatNipDepletionEffect. Deliberately shorter than RageBeamLifetime: Fancy Pants' beam
+	 * marks an ARRIVAL (the ultimate is just starting, no rush), while this marks Super Cayde's
+	 * power finishing running OUT, so a quicker read fits the moment better.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float CatNipDepletionEffectLifetime = 0.6f;
+
+	/**
+	 * Tint for the Cat Nip depletion beam's BeamColor material parameter -- matches CatNipTintColor's
+	 * own gold hue (just brighter, since this material isn't subject to the Paper2D sprite bloom
+	 * issue CatNipTintColor/BaseSpriteTintColor were cut down for -- see their own doc comments) so
+	 * the effect reads as "the same power that was glowing him now visibly leaving." Placeholder
+	 * value, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items")
+	FLinearColor CatNipDepletionBeamColor = FLinearColor(1.0f, 0.75f, 0.1f, 1.f);
+
 private:
+	/** Starts the Cat Nip invincibility window: sets bIsCatNipActive, tints the sprite, arms CatNipTimerHandle for CatNipDuration. Called from ResolvePickup. */
+	void BeginCatNip();
+
+	/** Timer callback (CatNipTimerHandle, after CatNipDuration): clears bIsCatNipActive and reverts the sprite tint to opaque white. UpdateAnimation naturally falls back off CatNipIdleFlipbook the very next tick once bIsCatNipActive is false. */
+	void EndCatNip();
+
+	/**
+	 * Spawns the Cat Nip depletion visual: same technique as SpawnRageBeamEffect (a simple scaling
+	 * cylinder mesh using M_RainbowBeam, this time held to a fixed gold color instead of hue-cycled)
+	 * but inverted -- starts at Cayde's own height and rises/fades OUT over
+	 * CatNipDepletionEffectLifetime instead of dropping in from above, reading as "the power that was
+	 * surrounding him escapes upward and disperses" rather than "a beam arrives". Called from
+	 * EndCatNip so it fires both on the natural CatNipTimerHandle timeout and the death-mid-Cat-Nip
+	 * safety net (both paths already run through EndCatNip).
+	 */
+	void SpawnCatNipDepletionEffect();
+
+	/** Per-tick rise/fade animation for the active Cat Nip depletion effect -- no-ops entirely while bCatNipDepletionBeamActive is false, same pattern as UpdateRageBeamEffect. */
+	void UpdateCatNipDepletionEffect(float DeltaSeconds);
+
+	/** Called every Tick while bIsCatNipActive: finds every ADeathMetalCatEnemyBase within (own capsule radius + that enemy's capsule radius + CatNipContactRadiusBuffer) and applies CatNipContactDamage to it, gated per-enemy by CatNipContactDamageCooldown via CatNipLastDamageTime so a single stationary touch doesn't repeat every frame. No-ops entirely while bIsCatNipActive is false. */
+	void UpdateCatNipContactDamage();
+
+	/** GetWorld()->GetTimeSeconds() of the last Cat Nip contact-damage hit against each enemy actor, keyed by a weak pointer so a destroyed enemy's stale entry is harmless -- see UpdateCatNipContactDamage/CatNipContactDamageCooldown. Purely a runtime gameplay cache, never touched from editor/Python tooling, so it doesn't carry the CDO-population caveat FlipbookFeetOffsetCorrections' own comment describes. */
+	UPROPERTY(Transient)
+	TMap<TWeakObjectPtr<AActor>, float> CatNipLastDamageTime;
+
+	FTimerHandle CatNipTimerHandle;
+
+	/** Solo Cayde's own capsule radius, captured once in BeginPlay before Cat Nip can ever resize it -- see CatNipCapsuleScale. */
+	float OriginalCapsuleRadius = 0.f;
+
+	/** Solo Cayde's own capsule half-height, captured once in BeginPlay before Cat Nip can ever resize it -- see CatNipCapsuleScale. */
+	float OriginalCapsuleHalfHeight = 0.f;
+
+	/** Lazily created the first time Cat Nip ever expires, then reused every time after -- same reasoning as RageBeamMeshComponent (a simple attached mesh, not a separate actor, so it automatically follows Cayde with no extra tracking). See SpawnCatNipDepletionEffect. */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> CatNipDepletionBeamMeshComponent;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> CatNipDepletionBeamMID;
+
+	/** True for CatNipDepletionEffectLifetime seconds after SpawnCatNipDepletionEffect fires; UpdateCatNipDepletionEffect no-ops entirely while false. */
+	bool bCatNipDepletionBeamActive = false;
+
+	float CatNipDepletionBeamStartTime = 0.f;
+
 	/** Avoids calling SetFlipbook every tick when the animation state hasn't changed. */
 	UPROPERTY(Transient)
 	TObjectPtr<UPaperFlipbook> CurrentFlipbook = nullptr;

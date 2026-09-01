@@ -158,6 +158,17 @@ private:
 	UPROPERTY()
 	TObjectPtr<UTextBlock> RageLabelText;
 
+	/** Scraps currency icon (T_ScrapsCurrency), directly below RageBar -- set once in Initialize() and never reassigned. */
+	UPROPERTY()
+	TObjectPtr<UImage> ScrapsImage;
+
+	/** Numeric Scraps count, alongside ScrapsImage. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> ScrapsText;
+
+	/** Change-gated poll for ScrapsText, same pattern as LastSeenHealth/LastSeenRage. */
+	int32 LastSeenScraps = -1;
+
 	/** Accumulates every tick (NativeTick's InDeltaTime) -- drives both the hue-cycle and the full-bar pulsate/shake sine waves in UpdateRageBarVisuals. */
 	float RageAnimTime = 0.f;
 

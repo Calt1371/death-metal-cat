@@ -38,6 +38,9 @@ namespace
 	// you_died_death_metal_cat.png, imported by AgentScripts/ue_import_death_screen.py.
 	const TCHAR* YouDiedTexturePath = TEXT("/Game/UI/DeathScreen/T_YouDied.T_YouDied");
 
+	// scraps-currency-logo.png_nobg.png, imported by AgentScripts/ue_import_item_sprites.py.
+	const TCHAR* ScrapsLogoPath = TEXT("/Game/UI/Items/T_ScrapsCurrency.T_ScrapsCurrency");
+
 	// Blood red for the "YOU DIED" text -- deliberately dark/desaturated rather than a bright pure
 	// red, so it reads as "blood" rather than a UI-warning red (same reasoning as the low-health
 	// tint's dark red base color above it).
@@ -287,6 +290,40 @@ bool UGnarlyRankHUDWidget::Initialize()
 			RageLabelSlot->SetAlignment(FVector2D(0.f, 0.f));
 			RageLabelSlot->SetPosition(FVector2D(260.f, 304.f));
 			RageLabelSlot->SetAutoSize(true);
+		}
+
+		// Scraps currency readout, directly below RageBar -- same position pattern as Health/Rage,
+		// offset down by another bar-height-plus-gap. A small icon (ScrapsImage) instead of a word
+		// label, since the currency logo itself is instantly recognizable and there's no bar/percent
+		// to label here, just a running count.
+		ScrapsImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ScrapsImage"));
+		if (UTexture2D* ScrapsTexture = LoadObject<UTexture2D>(nullptr, ScrapsLogoPath))
+		{
+			ScrapsImage->SetBrushFromTexture(ScrapsTexture);
+		}
+
+		if (UCanvasPanelSlot* ScrapsImageSlot = RootCanvas->AddChildToCanvas(ScrapsImage))
+		{
+			ScrapsImageSlot->SetAnchors(FAnchors(0.f, 0.f));
+			ScrapsImageSlot->SetAlignment(FVector2D(0.f, 0.f));
+			ScrapsImageSlot->SetPosition(FVector2D(30.f, 338.f));
+			ScrapsImageSlot->SetSize(FVector2D(24.f, 24.f));
+			ScrapsImageSlot->SetAutoSize(false);
+		}
+
+		ScrapsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ScrapsText"));
+		FSlateFontInfo ScrapsFont = ScrapsText->GetFont();
+		ScrapsFont.Size = 20;
+		ScrapsText->SetFont(ScrapsFont);
+		ScrapsText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		ScrapsText->SetText(FText::FromString(TEXT("0")));
+
+		if (UCanvasPanelSlot* ScrapsTextSlot = RootCanvas->AddChildToCanvas(ScrapsText))
+		{
+			ScrapsTextSlot->SetAnchors(FAnchors(0.f, 0.f));
+			ScrapsTextSlot->SetAlignment(FVector2D(0.f, 0.f));
+			ScrapsTextSlot->SetPosition(FVector2D(60.f, 338.f));
+			ScrapsTextSlot->SetAutoSize(true);
 		}
 
 		// -- Cayde's JRPG-style dialogue box (portrait + name + quip line) -- the one element on
@@ -805,6 +842,14 @@ void UGnarlyRankHUDWidget::RefreshDisplay()
 			const FLinearColor CurrentTint = LowHealthTintImage->GetColorAndOpacity();
 			LowHealthTintImage->SetColorAndOpacity(FLinearColor(CurrentTint.R, CurrentTint.G, CurrentTint.B, TintOpacity));
 		}
+	}
+
+	// -- Scraps count -- simplest of the polled elements, just a number, same change-gated pattern.
+	const int32 CurrentScraps = OwningCharacter->Scraps;
+	if (ScrapsText && CurrentScraps != LastSeenScraps)
+	{
+		LastSeenScraps = CurrentScraps;
+		ScrapsText->SetText(FText::FromString(FString::Printf(TEXT("%d"), CurrentScraps)));
 	}
 
 	// -- Rage bar percent -- fill COLOR is handled separately, every tick, in UpdateRageBarVisuals

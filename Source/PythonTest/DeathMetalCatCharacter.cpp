@@ -14,6 +14,7 @@
 #include "InputActionValue.h"
 #include "TimerManager.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
 #include "Kismet/GameplayStatics.h"
@@ -117,10 +118,31 @@ void ADeathMetalCatCharacter::BeginPlay()
 		CurrentFlipbook = IdleFlipbook;
 	}
 
+	// Applied here rather than left at the sprite component's own literal-white default: this
+	// project's Unlit/Emissive-driven Paper2D material (see CatNipTintColor's own doc comment)
+	// blooms out badly at full-bright SpriteColor once combined with this level's dynamic
+	// auto-exposure -- confirmed live (2026-08-25) that solo Cayde was blowing out to a
+	// near-featureless white blob even with nothing overridden. Dimming this per-sprite tint
+	// (rather than touching the camera's exposure/bloom, which affected the WHOLE level's
+	// rendering, not just the character, per the design ask's correction) fixes solo Cayde's own
+	// readability without touching anything else in the scene.
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		SpriteComp->SetSpriteColor(BaseSpriteTintColor);
+	}
+
 	// Captured before any per-flipbook feet correction ever runs -- see ApplyFeetOffsetCorrection.
 	if (GetSprite())
 	{
 		BaseSpriteRelativeLocation = GetSprite()->GetRelativeLocation();
+	}
+
+	// Captured once here (rather than hardcoded) so BeginCatNip/EndCatNip scale relative to whatever
+	// solo Cayde's own capsule actually is instead of a stale guess -- see BeginCatNip's own comment.
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		OriginalCapsuleRadius = Capsule->GetUnscaledCapsuleRadius();
+		OriginalCapsuleHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
 	}
 
 	PopulateFeetOffsetCorrections();
@@ -575,14 +597,29 @@ void ADeathMetalCatCharacter::UpdateWallSlide()
 
 bool ADeathMetalCatCharacter::CanTakeDamage() const
 {
-	return !bIsInvincible && !bIsBlocking;
+	// bIsCatNipActive is deliberately a separate check, not folded into bIsInvincible -- Cat Nip's
+	// 12-second window uses its own flag/timer (CatNipTimerHandle) precisely so it can never
+	// cancel or be cancelled early by Dodge's i-frames or the post-respawn invuln window, which
+	// both share bIsInvincible/IFrameTimerHandle already.
+	return !bIsInvincible && !bIsBlocking && !bIsCatNipActive;
 }
 
 float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (!CanTakeDamage())
 	{
-		// Mid-dodge i-frames -- ignore entirely, no health change, no Hurt animation.
+		// Mid-dodge i-frames, blocking, or Cat Nip -- ignore entirely, no health change, no Hurt animation.
+		return 0.f;
+	}
+
+	// Mirror Claw: small chance (ItemMirrorClawChance, stacked from pickups) to deflect the
+	// incoming hit back at whoever caused it instead of taking it at all. Rolled before
+	// Super::TakeDamage so a deflected hit has zero side effects on this end -- no Health loss, no
+	// Hurt flash, no GnarlyRank reset, exactly as if the attack had simply missed.
+	if (ItemMirrorClawChance > 0.f && DamageCauser && DamageCauser != this && FMath::FRand() < ItemMirrorClawChance)
+	{
+		UGameplayStatics::ApplyDamage(DamageCauser, DamageAmount, GetController(), this, UDamageType::StaticClass());
+		UE_LOG(LogTemp, Warning, TEXT("[MIRROR CLAW] Deflected %.1f damage back at %s"), DamageAmount, *DamageCauser->GetName());
 		return 0.f;
 	}
 
@@ -594,7 +631,8 @@ float ADeathMetalCatCharacter::TakeDamage(float DamageAmount, FDamageEvent const
 
 	// Defense attribute: percentage damage resistance, clamped so it can never reach 100% (which
 	// would read as literal invincibility once Defense grows large enough over many levels).
-	const float DefenseResistance = FMath::Clamp(Defense * DefenseResistPerPoint, 0.f, 0.9f);
+	// ItemDefenseResistBonus (SteelFur pickups) adds directly to this same resisted fraction.
+	const float DefenseResistance = FMath::Clamp(Defense * DefenseResistPerPoint + ItemDefenseResistBonus, 0.f, 0.9f);
 	ActualDamage *= (1.f - DefenseResistance);
 
 	Health = FMath::Max(0.f, Health - ActualDamage);
@@ -742,6 +780,272 @@ void ADeathMetalCatCharacter::HandleRespawn()
 	// to arm now (before input is even back) since it only ever gates incoming damage, never input.
 	bIsInvincible = true;
 	GetWorldTimerManager().SetTimer(IFrameTimerHandle, this, &ADeathMetalCatCharacter::ClearInvincibility, PostRespawnInvulnDuration, false);
+
+	// Scraps and every persistent per-run item bonus reset here too, same "full restart" rule as
+	// Health/GnarlyRank/room progress above -- picked-up items only last until death, then can be
+	// picked up again on the next run.
+	Scraps = 0;
+	ItemSwordDamageBonus = 0.f;
+	ItemGunDamageBonus = 0.f;
+	ItemDefenseResistBonus = 0.f;
+	ItemUltimateDurationBonus = 0.f;
+	ItemGnarlyAmpBonus = 0;
+	ItemMirrorClawChance = 0.f;
+
+	// Safety net: dying while Cat Nip is active shouldn't normally be reachable (CanTakeDamage()
+	// blocks the killing blow), but if it somehow happens, don't leave the timer/tint/flag stuck.
+	if (bIsCatNipActive)
+	{
+		GetWorldTimerManager().ClearTimer(CatNipTimerHandle);
+		EndCatNip();
+	}
+}
+
+void ADeathMetalCatCharacter::AddScraps(int32 Amount)
+{
+	Scraps = FMath::Max(0, Scraps + Amount);
+}
+
+void ADeathMetalCatCharacter::ResolvePickup(EPickupResultType Type)
+{
+	switch (Type)
+	{
+	case EPickupResultType::Scraps:
+		// AItemPickupCrate calls AddScraps directly for this case -- ResolvePickup shouldn't
+		// normally be called with Scraps, but handle it harmlessly rather than silently no-op.
+		AddScraps(1);
+		break;
+
+	case EPickupResultType::ScratchPatch:
+		Health = FMath::Min(MaxHealth, Health + MaxHealth * ScratchPatchHealPercent);
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] ScratchPatch: healed %.0f%% -- Health now %.1f/%.1f"), ScratchPatchHealPercent * 100.f, Health, MaxHealth);
+		break;
+
+	case EPickupResultType::NineLifeStim:
+		Health = FMath::Min(MaxHealth, Health + MaxHealth * NineLifeStimHealPercent);
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] NineLifeStim: healed %.0f%% -- Health now %.1f/%.1f"), NineLifeStimHealPercent * 100.f, Health, MaxHealth);
+		break;
+
+	case EPickupResultType::DeathDefier:
+		Health = FMath::Min(MaxHealth, Health + MaxHealth * DeathDefierHealPercent);
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] DeathDefier: healed %.0f%% -- Health now %.1f/%.1f"), DeathDefierHealPercent * 100.f, Health, MaxHealth);
+		break;
+
+	case EPickupResultType::RazorFang:
+		ItemSwordDamageBonus += RazorFangBonusPerPickup;
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] RazorFang: sword damage bonus now +%.0f%%"), ItemSwordDamageBonus * 100.f);
+		break;
+
+	case EPickupResultType::DeadshotRounds:
+		ItemGunDamageBonus += DeadshotRoundsBonusPerPickup;
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] DeadshotRounds: gun damage bonus now +%.0f%%"), ItemGunDamageBonus * 100.f);
+		break;
+
+	case EPickupResultType::SteelFur:
+		ItemDefenseResistBonus += SteelFurBonusPerPickup;
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] SteelFur: defense resist bonus now +%.0f%%"), ItemDefenseResistBonus * 100.f);
+		break;
+
+	case EPickupResultType::FancyFeed:
+		ItemUltimateDurationBonus += FancyFeedBonusPerPickup;
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] FancyFeed: Fancy Pants duration bonus now +%.1fs"), ItemUltimateDurationBonus);
+		break;
+
+	case EPickupResultType::GnarlyAmp:
+		ItemGnarlyAmpBonus += GnarlyAmpBonusPerPickup;
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] GnarlyAmp: GnarlyRank now accumulates +%d per hit"), ItemGnarlyAmpBonus);
+		break;
+
+	case EPickupResultType::MirrorClaw:
+		// Clamped to 1.0 so stacking many can never exceed a guaranteed deflect.
+		ItemMirrorClawChance = FMath::Min(1.f, ItemMirrorClawChance + MirrorClawChancePerPickup);
+		UE_LOG(LogTemp, Warning, TEXT("[ITEM] MirrorClaw: deflect chance now %.0f%%"), ItemMirrorClawChance * 100.f);
+		break;
+
+	case EPickupResultType::CatNip:
+		BeginCatNip();
+		break;
+	}
+}
+
+void ADeathMetalCatCharacter::BeginCatNip()
+{
+	// Restart cleanly if somehow picked up again mid-window -- refreshes the full duration rather
+	// than stacking or ignoring the second pickup. Capsule resize below is gated on this too -- a
+	// re-trigger mid-window must NOT resize an already-Super-Cayde-sized capsule a second time.
+	const bool bWasAlreadyActive = bIsCatNipActive;
+	if (bWasAlreadyActive)
+	{
+		GetWorldTimerManager().ClearTimer(CatNipTimerHandle);
+	}
+
+	bIsCatNipActive = true;
+	CatNipLastDamageTime.Reset();
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		SpriteComp->SetSpriteColor(CatNipTintColor);
+	}
+
+	// Super Cayde gets his own, taller capsule -- not solo Cayde's own capsule with a bigger sprite
+	// loosely draped over it (see CatNipCapsuleHalfHeightScale's own doc comment). Radius is
+	// deliberately left unscaled (see CatNipCapsuleRadiusScale) -- widening it too reintroduced a
+	// phantom "invisible wall" against Room1's geometry. Moves the actor UP by the half-height
+	// increase FIRST, then grows the capsule -- growing into the space just vacated above rather
+	// than growing symmetrically around the old center (which would push the new, taller capsule's
+	// bottom below the real floor and read as sinking into it, the exact bug this is fixing).
+	// Mirrors ACharacter's own Crouch/UnCrouch half-height-change idiom.
+	if (!bWasAlreadyActive)
+	{
+		if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+		{
+			const float NewHalfHeight = OriginalCapsuleHalfHeight * CatNipCapsuleHalfHeightScale;
+			const float NewRadius = OriginalCapsuleRadius * CatNipCapsuleRadiusScale;
+			AddActorWorldOffset(FVector(0.f, 0.f, NewHalfHeight - OriginalCapsuleHalfHeight));
+			Capsule->SetCapsuleSize(NewRadius, NewHalfHeight, true);
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[CAT NIP] Activated -- invincible for %.1fs"), CatNipDuration);
+	GetWorldTimerManager().SetTimer(CatNipTimerHandle, this, &ADeathMetalCatCharacter::EndCatNip, CatNipDuration, false);
+}
+
+void ADeathMetalCatCharacter::EndCatNip()
+{
+	bIsCatNipActive = false;
+	CatNipLastDamageTime.Reset();
+
+	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
+	{
+		SpriteComp->SetSpriteColor(BaseSpriteTintColor);
+	}
+
+	// Shrink back to solo Cayde's own capsule size -- resized FIRST (while still at the elevated
+	// Super Cayde position, so the shrink briefly leaves an air gap below rather than ever
+	// interpenetrating anything), THEN the actor drops down by the same delta to land the
+	// shrunk capsule's bottom back on the real floor. Reverse order from BeginCatNip's
+	// move-then-grow specifically so neither direction ever risks a transient overlap.
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		const float CurrentHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+		Capsule->SetCapsuleSize(OriginalCapsuleRadius, OriginalCapsuleHalfHeight, true);
+		AddActorWorldOffset(FVector(0.f, 0.f, OriginalCapsuleHalfHeight - CurrentHalfHeight));
+	}
+
+	SpawnCatNipDepletionEffect();
+
+	UE_LOG(LogTemp, Warning, TEXT("[CAT NIP] Ended"));
+}
+
+void ADeathMetalCatCharacter::SpawnCatNipDepletionEffect()
+{
+	if (!CatNipDepletionBeamMeshComponent)
+	{
+		CatNipDepletionBeamMeshComponent = NewObject<UStaticMeshComponent>(this, TEXT("CatNipDepletionBeamMesh"));
+		CatNipDepletionBeamMeshComponent->SetupAttachment(RootComponent);
+		CatNipDepletionBeamMeshComponent->RegisterComponent();
+		CatNipDepletionBeamMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		CatNipDepletionBeamMeshComponent->SetCastShadow(false);
+		CatNipDepletionBeamMeshComponent->SetMobility(EComponentMobility::Movable);
+
+		if (UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+		{
+			CatNipDepletionBeamMeshComponent->SetStaticMesh(CylinderMesh);
+		}
+
+		if (UMaterialInterface* BeamMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Characters/DeathMetalCat/Materials/M_RainbowBeam.M_RainbowBeam")))
+		{
+			CatNipDepletionBeamMID = UMaterialInstanceDynamic::Create(BeamMaterial, this);
+			CatNipDepletionBeamMeshComponent->SetMaterial(0, CatNipDepletionBeamMID);
+		}
+	}
+
+	// Starts right at Cayde's own height (unlike RageBeamMeshComponent, which starts high above and
+	// drops in) -- UpdateCatNipDepletionEffect rises it and fades it out over
+	// CatNipDepletionEffectLifetime, reading as "the power escapes upward and disperses" rather than
+	// "a beam arrives".
+	CatNipDepletionBeamMeshComponent->SetRelativeLocation(FVector::ZeroVector);
+	CatNipDepletionBeamMeshComponent->SetRelativeScale3D(FVector(1.5f, 1.5f, 6.f));
+	CatNipDepletionBeamMeshComponent->SetVisibility(true);
+
+	if (CatNipDepletionBeamMID)
+	{
+		CatNipDepletionBeamMID->SetVectorParameterValue(TEXT("BeamColor"), CatNipDepletionBeamColor);
+		CatNipDepletionBeamMID->SetScalarParameterValue(TEXT("BeamOpacity"), 1.f);
+	}
+
+	bCatNipDepletionBeamActive = true;
+	CatNipDepletionBeamStartTime = GetWorld()->GetTimeSeconds();
+}
+
+void ADeathMetalCatCharacter::UpdateCatNipDepletionEffect(float DeltaSeconds)
+{
+	if (!bCatNipDepletionBeamActive || !CatNipDepletionBeamMeshComponent)
+	{
+		return;
+	}
+
+	const float Elapsed = GetWorld()->GetTimeSeconds() - CatNipDepletionBeamStartTime;
+	const float Alpha = (CatNipDepletionEffectLifetime > 0.f) ? FMath::Clamp(Elapsed / CatNipDepletionEffectLifetime, 0.f, 1.f) : 1.f;
+
+	constexpr float RiseHeight = 500.f;
+	CatNipDepletionBeamMeshComponent->SetRelativeLocation(FVector(0.f, 0.f, FMath::Lerp(0.f, RiseHeight, Alpha)));
+
+	if (CatNipDepletionBeamMID)
+	{
+		// Fades all the way to invisible (unlike RageBeamMeshComponent's partial fade) -- this beam
+		// is marking something ENDING, so it should genuinely disappear, not linger dimmed.
+		CatNipDepletionBeamMID->SetScalarParameterValue(TEXT("BeamOpacity"), 1.f - Alpha);
+	}
+
+	if (Alpha >= 1.f)
+	{
+		bCatNipDepletionBeamActive = false;
+		CatNipDepletionBeamMeshComponent->SetVisibility(false);
+	}
+}
+
+void ADeathMetalCatCharacter::UpdateCatNipContactDamage()
+{
+	UCapsuleComponent* MyCapsule = GetCapsuleComponent();
+	if (!MyCapsule)
+	{
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	const FVector MyLocation = GetActorLocation();
+	const float MyRadius = MyCapsule->GetScaledCapsuleRadius();
+
+	TArray<AActor*> Enemies;
+	UGameplayStatics::GetAllActorsOfClass(this, ADeathMetalCatEnemyBase::StaticClass(), Enemies);
+
+	for (AActor* EnemyActor : Enemies)
+	{
+		ADeathMetalCatEnemyBase* Enemy = Cast<ADeathMetalCatEnemyBase>(EnemyActor);
+		if (!Enemy)
+		{
+			continue;
+		}
+
+		UCapsuleComponent* EnemyCapsule = Enemy->GetCapsuleComponent();
+		const float EnemyRadius = EnemyCapsule ? EnemyCapsule->GetScaledCapsuleRadius() : 0.f;
+		const float TouchDistance = MyRadius + EnemyRadius + CatNipContactRadiusBuffer;
+
+		if (FVector::Dist(MyLocation, Enemy->GetActorLocation()) > TouchDistance)
+		{
+			continue;
+		}
+
+		const float* LastHitTime = CatNipLastDamageTime.Find(Enemy);
+		if (LastHitTime && CurrentTime - *LastHitTime < CatNipContactDamageCooldown)
+		{
+			continue;
+		}
+
+		UGameplayStatics::ApplyDamage(Enemy, CatNipContactDamage, GetController(), this, UDamageType::StaticClass());
+		CatNipLastDamageTime.Add(Enemy, CurrentTime);
+	}
 }
 
 float ADeathMetalCatCharacter::RollDamage(float BaseDamage, EDamageTier& OutTier) const
@@ -778,7 +1082,9 @@ void ADeathMetalCatCharacter::SpawnDamageNumber(const FVector& Location, float D
 
 void ADeathMetalCatCharacter::RegisterGnarlyHit()
 {
-	++GnarlyHitCount;
+	// Normally a flat +1; GnarlyAmp pickups (ItemGnarlyAmpBonus) add extra points per hit so rank
+	// climbs faster for the rest of the run.
+	GnarlyHitCount += (1 + ItemGnarlyAmpBonus);
 
 	const int32 PreviousRank = GnarlyRank;
 	while (GnarlyRank < GnarlyRankThresholds.Num() && GnarlyHitCount >= GnarlyRankThresholds[GnarlyRank])
@@ -878,8 +1184,10 @@ void ADeathMetalCatCharacter::BeginUltimateTransformation()
 		}
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Transformed -- riding Fancy Pants for %.1fs"), UltimateDuration);
-	GetWorldTimerManager().SetTimer(UltimateDurationTimerHandle, this, &ADeathMetalCatCharacter::EndUltimateTransformation, UltimateDuration, false);
+	// FancyFeed pickups (ItemUltimateDurationBonus) extend this for the rest of the run.
+	const float ActualDuration = UltimateDuration + ItemUltimateDurationBonus;
+	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Transformed -- riding Fancy Pants for %.1fs"), ActualDuration);
+	GetWorldTimerManager().SetTimer(UltimateDurationTimerHandle, this, &ADeathMetalCatCharacter::EndUltimateTransformation, ActualDuration, false);
 }
 
 void ADeathMetalCatCharacter::EndUltimateTransformation()
@@ -1344,6 +1652,17 @@ void ADeathMetalCatCharacter::StartSwordComboStage(int32 StageIndex)
 		StageFlipbook = SwordCombo3Flipbook;
 	}
 
+	// Cat Nip: the Attack input (this function) shows the same one "super mode" attack sheet
+	// regardless of combo stage, same as it already overrides the Shoot input in
+	// UpdateHoldFireFlipbook -- there's only one Cat Nip attack asset, and it's meant to be Super
+	// Cayde's one attack visual no matter which attack button triggers it. Uppy/Double Whammy/
+	// Spinny Down (the airborne/backward special moves, started elsewhere in HandleSwordAttack) keep
+	// their normal art -- no Cat Nip art exists for those.
+	if (bIsCatNipActive && CatNipAttackFlipbook)
+	{
+		StageFlipbook = CatNipAttackFlipbook;
+	}
+
 	if (UPaperFlipbookComponent* SpriteComp = GetSprite())
 	{
 		if (StageFlipbook)
@@ -1544,7 +1863,8 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	// get either of these, see FireShotTrace.
 	const float GnarlyMultiplier = 1.f + (GnarlyRank * GnarlyRankMeleeDamageBonusPerRank);
 	const float StrengthMultiplier = 1.f + (Strength * StrengthMultiplierPerPoint);
-	RolledDamage *= GnarlyMultiplier * StrengthMultiplier;
+	// RazorFang pickups add here too -- see ItemSwordDamageBonus's own comment.
+	RolledDamage *= GnarlyMultiplier * StrengthMultiplier * (1.f + ItemSwordDamageBonus);
 
 	const float DamageApplied = UGameplayStatics::ApplyDamage(OtherActor, RolledDamage, GetController(), this, UDamageType::StaticClass());
 
@@ -1656,6 +1976,22 @@ void ADeathMetalCatCharacter::UpdateHoldFireFlipbook(bool bAirborne, bool bAngle
 			SpriteComp->SetLooping(true);
 			SpriteComp->PlayFromStart();
 			CurrentFlipbook = FancyAttackFlipbook;
+		}
+		return;
+	}
+
+	if (bIsCatNipActive && CatNipAttackFlipbook)
+	{
+		// Same reasoning as the bIsTransformed branch above -- Cat Nip's one "super mode" attack
+		// sheet (a gun-fire pose, not a sword swing -- Cayde is drawn holding his gun in every Cat
+		// Nip flipbook, sword sheathed on his back) always shows regardless of
+		// grounded/airborne/angled state, since there's no separate Cat Nip art for those.
+		if (CurrentFlipbook != CatNipAttackFlipbook)
+		{
+			SpriteComp->SetFlipbook(CatNipAttackFlipbook);
+			SpriteComp->SetLooping(true);
+			SpriteComp->PlayFromStart();
+			CurrentFlipbook = CatNipAttackFlipbook;
 		}
 		return;
 	}
@@ -1775,7 +2111,8 @@ void ADeathMetalCatCharacter::FireShotTrace()
 		// consistent for if that changes later.
 		float RolledDamage = RollDamage(GunBaseDamage, Tier);
 		const float DexterityMultiplier = 1.f + (Dexterity * DexterityMultiplierPerPoint);
-		RolledDamage *= DexterityMultiplier;
+		// DeadshotRounds pickups add here too -- see ItemGunDamageBonus's own comment.
+		RolledDamage *= DexterityMultiplier * (1.f + ItemGunDamageBonus);
 
 		const float DamageApplied = UGameplayStatics::ApplyDamage(Hit.GetActor(), RolledDamage, GetController(), this, UDamageType::StaticClass());
 
@@ -1840,6 +2177,11 @@ void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 		UpdateRageBeamEffect(DeltaSeconds);
 	}
 
+	if (bCatNipDepletionBeamActive)
+	{
+		UpdateCatNipDepletionEffect(DeltaSeconds);
+	}
+
 	if (bFancyAttackBeamActive)
 	{
 		UpdateFancyAttackBeamEffect(DeltaSeconds);
@@ -1848,6 +2190,11 @@ void ADeathMetalCatCharacter::Tick(float DeltaSeconds)
 	if (bJumpDistanceTestActive)
 	{
 		UpdateJumpDistanceTest();
+	}
+
+	if (bIsCatNipActive)
+	{
+		UpdateCatNipContactDamage();
 	}
 }
 
@@ -1926,18 +2273,63 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// while riding Fancy Pants falls through to the idle/gallop branch below instead (which
 		// picks FancyIdleFlipbook), rather than flashing solo Cayde's jump pose mid-transformation.
 		// Jumping itself is NOT disabled during the ultimate, only this specific visual.
-		if (JumpFlipbook && CurrentFlipbook != JumpFlipbook)
+		//
+		// While bIsCatNipActive, CatNipJumpFlipbook (or its pre-mirrored counterpart, see below)
+		// takes over instead -- but unlike JumpFlipbook it's a full animated arc (see its own doc
+		// comment), so it plays looping rather than being frame-locked to Velocity.Z the way the
+		// two-pose JumpFlipbook is below. Starts at CatNipJumpStartFrame rather than frame 0 -- the
+		// sheet's early frames are a crouch/wind-up pose meant to play grounded just before launch,
+		// not an airborne pose, so starting there would show Cayde crouching while already in mid-air.
+		if (bIsCatNipActive && CatNipJumpFlipbook)
 		{
-			SpriteComp->SetFlipbook(JumpFlipbook);
-			SpriteComp->Stop();
-			CurrentFlipbook = JumpFlipbook;
-		}
-		if (JumpFlipbook)
-		{
-			const int32 DesiredFrame = (Velocity.Z >= 0.f) ? 0 : 1; // 0 = rising/peak, 1 = falling
-			if (SpriteComp->GetPlaybackPositionInFrames() != DesiredFrame)
+			// Picks between CatNipJumpFlipbook and its pre-mirrored counterpart by movement
+			// direction directly, rather than showing one asset and relying on Scale.X to mirror it
+			// like every other flipbook in the game -- see CatNipJumpFlipbookMirrored's own doc
+			// comment for why. Re-evaluated every tick (not just once on landing airborne) so
+			// changing direction mid-air swaps art immediately. The facing-flip section further
+			// below deliberately locks Scale.X positive while either of these is showing, so this
+			// asset selection is the ONLY thing determining which way Cayde faces here.
+			//
+			// This assignment is intentionally the OPPOSITE of what the asset names suggest:
+			// confirmed live (2026-09-01) that this project's Paper2D sprite rendering mirrors ALL
+			// raw RawAssets/Allies art relative to its source PNG (the same systemic issue
+			// ue_fix_cayde_facing_flip.py's own docstring documents for the base moveset) -- so
+			// CatNipJumpFlipbook (the RAW, never-flipped import) actually RENDERS facing left, and
+			// CatNipJumpFlipbookMirrored (the pre-flipped-source import) renders facing right, once
+			// that systemic mirror is applied on top. Picking the "Mirrored" asset for rightward
+			// movement is therefore correct, not a bug.
+			UPaperFlipbook* DesiredCatNipJumpFlipbook = (Velocity.X < 0.f)
+				? CatNipJumpFlipbook
+				: (CatNipJumpFlipbookMirrored ? CatNipJumpFlipbookMirrored : CatNipJumpFlipbook);
+			if (CurrentFlipbook != DesiredCatNipJumpFlipbook)
 			{
-				SpriteComp->SetPlaybackPositionInFrames(DesiredFrame, false);
+				const bool bWasCatNipJumpVariant = (CurrentFlipbook == CatNipJumpFlipbook || CurrentFlipbook == CatNipJumpFlipbookMirrored);
+				const int32 PreviousFrame = SpriteComp->GetPlaybackPositionInFrames();
+				SpriteComp->SetFlipbook(DesiredCatNipJumpFlipbook);
+				SpriteComp->SetLooping(true);
+				// Preserve the current frame when merely switching mirror direction mid-arc (both
+				// assets share identical frame timing/content, just mirrored) instead of restarting
+				// from CatNipJumpStartFrame every time the player changes direction mid-air.
+				SpriteComp->SetPlaybackPositionInFrames(bWasCatNipJumpVariant ? PreviousFrame : CatNipJumpStartFrame, false);
+				SpriteComp->Play();
+				CurrentFlipbook = DesiredCatNipJumpFlipbook;
+			}
+		}
+		else
+		{
+			if (JumpFlipbook && CurrentFlipbook != JumpFlipbook)
+			{
+				SpriteComp->SetFlipbook(JumpFlipbook);
+				SpriteComp->Stop();
+				CurrentFlipbook = JumpFlipbook;
+			}
+			if (JumpFlipbook)
+			{
+				const int32 DesiredFrame = (Velocity.Z >= 0.f) ? 0 : 1; // 0 = rising/peak, 1 = falling
+				if (SpriteComp->GetPlaybackPositionInFrames() != DesiredFrame)
+				{
+					SpriteComp->SetPlaybackPositionInFrames(DesiredFrame, false);
+				}
 			}
 		}
 	}
@@ -1948,11 +2340,14 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// its own. Any nonzero horizontal speed goes straight to Run, no threshold. While
 		// bIsTransformed, Idle/Run (and the airborne fallback above) are replaced by
 		// FancyIdle/FancyGallop -- the "riding Fancy Pants" ultimate moveset.
-		UPaperFlipbook* DesiredFlipbook = bIsTransformed ? FancyIdleFlipbook : IdleFlipbook;
+		// bIsTransformed wins over bIsCatNipActive if somehow both are active at once -- riding
+		// Fancy Pants already replaces the whole moveset, so it stays the more dominant state; Cat
+		// Nip is the one that's "just the Idle pose" per the design ask.
+		UPaperFlipbook* DesiredFlipbook = bIsTransformed ? FancyIdleFlipbook : (bIsCatNipActive && CatNipIdleFlipbook ? CatNipIdleFlipbook : IdleFlipbook);
 		const float CurrentMoveSpeed = FMath::Abs(Velocity.X);
 		if (CurrentMoveSpeed > KINDA_SMALL_NUMBER)
 		{
-			DesiredFlipbook = bIsTransformed ? FancyGallopFlipbook : RunFlipbook;
+			DesiredFlipbook = bIsTransformed ? FancyGallopFlipbook : (bIsCatNipActive && CatNipWalkFlipbook ? CatNipWalkFlipbook : RunFlipbook);
 		}
 
 		if (DesiredFlipbook && DesiredFlipbook != CurrentFlipbook)
@@ -1998,6 +2393,16 @@ void ADeathMetalCatCharacter::UpdateAnimation()
 		// nothing reliable to go on here.
 		FVector Scale = SpriteComp->GetRelativeScale3D();
 		Scale.X = WallSlideFacingSign * FMath::Abs(Scale.X);
+		SpriteComp->SetRelativeScale3D(Scale);
+	}
+	else if (CurrentFlipbook == CatNipJumpFlipbook || CurrentFlipbook == CatNipJumpFlipbookMirrored)
+	{
+		// Facing is driven entirely by which pre-mirrored asset the airborne branch above selected,
+		// not by Scale.X -- locked positive here so this doesn't ALSO try to mirror an asset that's
+		// already correctly oriented (which would cancel out or double up depending on direction).
+		// See CatNipJumpFlipbookMirrored's own doc comment.
+		FVector Scale = SpriteComp->GetRelativeScale3D();
+		Scale.X = FMath::Abs(Scale.X);
 		SpriteComp->SetRelativeScale3D(Scale);
 	}
 	else if (FMath::Abs(Velocity.X) > KINDA_SMALL_NUMBER)
@@ -2060,6 +2465,20 @@ void ADeathMetalCatCharacter::PopulateFeetOffsetCorrections()
 	// hoof was confirmed on this art at the alpha>0 threshold used for solo Cayde).
 	if (FancyGallopFlipbook) FlipbookFeetOffsetCorrections.Add(FancyGallopFlipbook, -9.0f);
 	if (FancyAttackFlipbook) FlipbookFeetOffsetCorrections.Add(FancyAttackFlipbook, 16.0f);
+
+	// Cat Nip "Super Cayde" flipbooks -- still solo Cayde (measured against IdleFlipbook as the same
+	// baseline every other non-Fancy-Pants flipbook above uses), just drawn bigger/glowing at half
+	// the PPU (0.75 vs Idle's 1.5) so the "got bigger and stronger" read comes through. Idle/Attack
+	// live-tuned via screenshot 2026-08-25 (the initial -4.0f placeholder estimate left them
+	// visibly floating above the floor); Walk was already confirmed correctly grounded at -4.0f, so
+	// left unchanged. Jump is still the original placeholder estimate, not yet live-tuned.
+	if (CatNipIdleFlipbook) FlipbookFeetOffsetCorrections.Add(CatNipIdleFlipbook, -16.0f);
+	if (CatNipWalkFlipbook) FlipbookFeetOffsetCorrections.Add(CatNipWalkFlipbook, -4.0f);
+	if (CatNipAttackFlipbook) FlipbookFeetOffsetCorrections.Add(CatNipAttackFlipbook, -16.0f);
+	if (CatNipJumpFlipbook) FlipbookFeetOffsetCorrections.Add(CatNipJumpFlipbook, -4.0f);
+	// Same vertical correction as CatNipJumpFlipbook -- mirroring is horizontal only, the feet's
+	// vertical position within the frame is identical between the two.
+	if (CatNipJumpFlipbookMirrored) FlipbookFeetOffsetCorrections.Add(CatNipJumpFlipbookMirrored, -4.0f);
 }
 
 void ADeathMetalCatCharacter::Debug_ForceFlipbookForFeetTest(UPaperFlipbook* Flipbook)
@@ -2092,6 +2511,16 @@ void ADeathMetalCatCharacter::Debug_SetHoldFireForTest(bool bStart)
 		bIsHoldingShootButton = false;
 		ResetShootState();
 	}
+}
+
+void ADeathMetalCatCharacter::Debug_ForceCatNipDepletionEffect()
+{
+	SpawnCatNipDepletionEffect();
+}
+
+void ADeathMetalCatCharacter::Debug_ForceRespawnForTest()
+{
+	HandleRespawn();
 }
 
 void ADeathMetalCatCharacter::ApplyFeetOffsetCorrection()

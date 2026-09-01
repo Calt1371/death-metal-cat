@@ -20,13 +20,12 @@ identically for all 9 rooms regardless of naming convention. Confirmed via live 
 Room1 (all 4 markers' marker_id properties matched their JSON entries exactly) before writing
 this script.
 
-PICKUP SPAWNING -- NOT IMPLEMENTED, BY DESIGN, NOT AN OVERSIGHT: confirmed via Content/ and
-Source/PythonTest searches that no pickup actor class exists anywhere in this project (no
-Blueprint, no C++ class) -- consistent with the earlier schema audit finding that no real
-pickup-type taxonomy exists yet either. population=="pickup" markers are logged and skipped
-rather than guessing at what a pickup actor should do; this needs a separate decision (build a
-minimal pickup actor first, or defer pickup spawning as its own follow-up task) before this script
-can do anything for them.
+PICKUP SPAWNING: population=="pickup" markers now spawn BP_ItemCrate (AItemPickupCrate) at the
+marker's exact transform, same attach-to-RoomShell/idempotent-cleanup convention as enemies
+(labeled "SpawnedPickup_<ROOM>_<marker_id>"). The crate itself rolls its own weighted drop table
+(Scraps vs. one of the special items) on player overlap -- this script only places it, same
+division of responsibility as enemy spawning (this script places BP_EnemyBase, the enemy's own
+Tick/TakeDamage decide what happens next).
 
 ENEMY SPAWNING: spawns BP_EnemyBase (the Blueprint subclass of ADeathMetalCatEnemyBase that
 actually has its placeholder mesh/material configured -- not the raw C++ class) at the marker's
@@ -71,6 +70,7 @@ from remote_execution import RemoteExecution
 VALID_ROOMS = ['Room1', 'Room2', 'Room3', 'Room4A', 'Room4B', 'Room5', 'Room6', 'Room7', 'Room8']
 
 ENEMY_BP_PATH = "/Game/Characters/DeathMetalCat/Blueprints/BP_EnemyBase"
+PICKUP_BP_PATH = "/Game/Items/Crate/BP_ItemCrate"
 
 # Separates multiple simultaneously-spawned enemies from the same marker so their capsules don't
 # spawn exactly stacked -- a simple, deterministic offset pattern, not physics-based separation.
@@ -83,6 +83,7 @@ import unreal
 room_id_name = "__ROOM_ID_NAME__"
 json_path = r"__JSON_PATH__"
 enemy_bp_path = "__ENEMY_BP_PATH__"
+pickup_bp_path = "__PICKUP_BP_PATH__"
 offset_x = __OFFSET_X__
 
 with open(json_path, "r", encoding="utf-8") as f:
@@ -100,13 +101,17 @@ if room_shell is None:
 
 attached = room_shell.get_attached_actors(False, True)
 
-# ---- Remove any previously-spawned enemies for this room (idempotent re-run) ----
+# ---- Remove any previously-spawned enemies/pickups for this room (idempotent re-run) ----
 removed_count = 0
+removed_pickup_count = 0
 for a in attached:
     if a.get_actor_label().startswith("SpawnedEnemy_" + room_id_name + "_"):
         actor_subsystem.destroy_actor(a)
         removed_count += 1
-unreal.log_warning("[SPAWN ENCOUNTER] " + room_id_name + ": removed " + str(removed_count) + " previously-spawned enemy actor(s)")
+    elif a.get_actor_label().startswith("SpawnedPickup_" + room_id_name + "_"):
+        actor_subsystem.destroy_actor(a)
+        removed_pickup_count += 1
+unreal.log_warning("[SPAWN ENCOUNTER] " + room_id_name + ": removed " + str(removed_count) + " previously-spawned enemy actor(s), " + str(removed_pickup_count) + " previously-spawned pickup actor(s)")
 
 # Re-fetch attached actors post-deletion so marker lookups below don't reference destroyed actors.
 attached = room_shell.get_attached_actors(False, True)
@@ -120,8 +125,13 @@ if enemy_bp is None:
     raise RuntimeError("[SPAWN ENCOUNTER] Failed to load " + enemy_bp_path)
 enemy_class = enemy_bp.generated_class()
 
+pickup_bp = unreal.EditorAssetLibrary.load_asset(pickup_bp_path)
+if pickup_bp is None:
+    raise RuntimeError("[SPAWN ENCOUNTER] Failed to load " + pickup_bp_path)
+pickup_class = pickup_bp.generated_class()
+
 spawned_enemy_count = 0
-skipped_pickup_count = 0
+spawned_pickup_count = 0
 empty_count = 0
 missing_marker_count = 0
 
@@ -140,10 +150,17 @@ for entry in population_data.get("populations", []):
         continue
 
     if population == "pickup":
-        # No pickup actor class exists in this project yet -- logged and skipped rather than
-        # guessing at what a pickup should do (see docstring).
-        unreal.log_warning("[SPAWN ENCOUNTER] marker_id " + str(marker_id) + " is population=pickup -- SKIPPED, no pickup actor class exists yet")
-        skipped_pickup_count += 1
+        # AItemPickupCrate (BP_ItemCrate) now exists -- spawns one crate at the marker's exact
+        # transform, same attach-to-RoomShell convention as enemies. Always exactly one per
+        # marker (unlike enemy_count, pickups have no count field -- see level_encounter_designer.py's
+        # schema), so no ENEMY_SPAWN_OFFSET_X-style spacing is needed.
+        marker_loc = marker.get_actor_location()
+        pickup_actor = actor_subsystem.spawn_actor_from_class(pickup_class, marker_loc)
+        pickup_actor.set_actor_label("SpawnedPickup_" + room_id_name + "_" + str(marker_id))
+        ok = pickup_actor.attach_to_actor(room_shell, "", unreal.AttachmentRule.KEEP_WORLD, unreal.AttachmentRule.KEEP_WORLD, unreal.AttachmentRule.KEEP_WORLD, False)
+        if not ok:
+            unreal.log_error("[SPAWN ENCOUNTER] Failed to attach SpawnedPickup_" + room_id_name + "_" + str(marker_id))
+        spawned_pickup_count += 1
         continue
 
     if population == "enemy":
@@ -161,7 +178,7 @@ for entry in population_data.get("populations", []):
 
 unreal.log_warning(
     "[SPAWN ENCOUNTER] " + room_id_name + ": spawned " + str(spawned_enemy_count) + " enemy actor(s), "
-    + "skipped " + str(skipped_pickup_count) + " pickup marker(s) (no pickup class), "
+    + str(spawned_pickup_count) + " pickup crate(s), "
     + str(empty_count) + " empty marker(s) left untouched, "
     + str(missing_marker_count) + " marker(s) not found"
 )
@@ -184,6 +201,7 @@ def build_spawn_command(room_id_name: str, json_path: str) -> str:
         .replace("__ROOM_ID_NAME__", room_id_name)
         .replace("__JSON_PATH__", json_path)
         .replace("__ENEMY_BP_PATH__", ENEMY_BP_PATH)
+        .replace("__PICKUP_BP_PATH__", PICKUP_BP_PATH)
         .replace("__OFFSET_X__", repr(ENEMY_SPAWN_OFFSET_X))
     )
 

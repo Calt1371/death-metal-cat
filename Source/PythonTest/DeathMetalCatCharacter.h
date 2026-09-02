@@ -1318,9 +1318,17 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Items")
 	int32 Scraps = 0;
 
-	/** Adds Amount to Scraps (clamped so a negative Amount can never go below 0, though nothing currently grants negative Scraps). Called by AItemPickupCrate when its weighted drop table resolves to Scraps rather than a special item. */
+	/** Adds Amount to Scraps (clamped so a negative Amount can never go below 0, though nothing currently grants negative Scraps). Called by AItemPickupCrate when its weighted drop table resolves to Scraps rather than a special item, and by ADeathMetalCatEnemyBase's kill reward. Also fires SpawnScrapCoinEffect for a positive Amount -- see that function's own comment. */
 	UFUNCTION(BlueprintCallable, Category = "Items")
 	void AddScraps(int32 Amount);
+
+	/** How many coin billboards SpawnScrapCoinEffect spawns per AddScraps call -- deliberately a small fixed count regardless of Amount (a "small subtle" flourish, not a literal per-Scrap counter). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	int32 ScrapCoinCount = 3;
+
+	/** Radius (uu) around Cayde each coin randomly spawns within before flying in -- see SpawnScrapCoinEffect. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Items", meta = (ClampMin = "0"))
+	float ScrapCoinSpawnRadius = 100.f;
 
 	/**
 	 * Single entry point AItemPickupCrate calls once its weighted drop table resolves to a special
@@ -1515,6 +1523,17 @@ private:
 
 	/** Per-tick rise/fade animation for the active Cat Nip depletion effect -- no-ops entirely while bCatNipDepletionBeamActive is false, same pattern as UpdateRageBeamEffect. */
 	void UpdateCatNipDepletionEffect(float DeltaSeconds);
+
+	/**
+	 * Spawns ScrapCoinCount short-lived AScrapCoinEffectActor instances at randomized offsets
+	 * within ScrapCoinSpawnRadius of Cayde, each targeting Cayde itself so they visually "flow
+	 * toward him" and fade out on arrival -- see that actor's own class comment. Unlike
+	 * SpawnRageBeamEffect/SpawnCatNipDepletionEffect (single reused attached component), this
+	 * spawns real short-lived actors since multiple coins need to animate independently at once;
+	 * each one self-destructs on its own Tick, nothing here needs to track or clean them up.
+	 * Called from AddScraps for any positive Amount.
+	 */
+	void SpawnScrapCoinEffect();
 
 	/** Called every Tick while bIsCatNipActive: finds every ADeathMetalCatEnemyBase within (own capsule radius + that enemy's capsule radius + CatNipContactRadiusBuffer) and applies CatNipContactDamage to it, gated per-enemy by CatNipContactDamageCooldown via CatNipLastDamageTime so a single stationary touch doesn't repeat every frame. No-ops entirely while bIsCatNipActive is false. */
 	void UpdateCatNipContactDamage();

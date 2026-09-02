@@ -29,6 +29,7 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "ScrapCoinEffectActor.h"
 
 ADeathMetalCatCharacter::ADeathMetalCatCharacter()
 {
@@ -804,6 +805,38 @@ void ADeathMetalCatCharacter::HandleRespawn()
 void ADeathMetalCatCharacter::AddScraps(int32 Amount)
 {
 	Scraps = FMath::Max(0, Scraps + Amount);
+
+	if (Amount > 0)
+	{
+		SpawnScrapCoinEffect();
+	}
+}
+
+void ADeathMetalCatCharacter::SpawnScrapCoinEffect()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	for (int32 i = 0; i < ScrapCoinCount; ++i)
+	{
+		// Random point on the locked gameplay plane (X/Z only -- Y stays at Cayde's own, same
+		// convention as every other effect/placement in this class) within ScrapCoinSpawnRadius.
+		const float AngleDegrees = FMath::FRandRange(0.f, 360.f);
+		const float Distance = FMath::FRandRange(ScrapCoinSpawnRadius * 0.5f, ScrapCoinSpawnRadius);
+		const FVector Offset(Distance * FMath::Cos(FMath::DegreesToRadians(AngleDegrees)), 0.f, Distance * FMath::Sin(FMath::DegreesToRadians(AngleDegrees)));
+		const FVector SpawnLocation = GetActorLocation() + Offset;
+
+		if (AScrapCoinEffectActor* Coin = World->SpawnActor<AScrapCoinEffectActor>(SpawnLocation, FRotator::ZeroRotator, SpawnParams))
+		{
+			Coin->InitScrapCoin(this);
+		}
+	}
 }
 
 void ADeathMetalCatCharacter::ResolvePickup(EPickupResultType Type)

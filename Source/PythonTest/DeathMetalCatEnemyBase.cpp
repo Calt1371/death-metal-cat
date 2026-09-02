@@ -477,14 +477,15 @@ float ADeathMetalCatEnemyBase::TakeDamage(float DamageAmount, FDamageEvent const
 			OwningRoomShell->NotifyEnemyDefeated();
 		}
 
-		// XP goes to whoever actually landed the killing blow -- DamageCauser is exactly that
-		// (ApplyDamage's call sites in ADeathMetalCatCharacter pass `this` as DamageCauser), so no
-		// separate "find the player" lookup is needed. Runs exactly once, right here, regardless of
-		// how many times this enemy subsequently respawns -- HandleDeath/HandleRespawn below are
-		// purely a visual/state reset and don't touch XP at all.
+		// XP and Scraps go to whoever actually landed the killing blow -- DamageCauser is exactly
+		// that (ApplyDamage's call sites in ADeathMetalCatCharacter pass `this` as DamageCauser),
+		// so no separate "find the player" lookup is needed. Runs exactly once, right here,
+		// regardless of how many times this enemy subsequently respawns -- HandleDeath/HandleRespawn
+		// below are purely a visual/state reset and don't touch either reward.
 		if (ADeathMetalCatCharacter* KillerCharacter = Cast<ADeathMetalCatCharacter>(DamageCauser))
 		{
 			KillerCharacter->AddXP(XPReward);
+			KillerCharacter->AddScraps(FMath::RandRange(ScrapRewardMin, ScrapRewardMax));
 			KillerCharacter->TriggerQuip(EQuipTriggerType::Kill);
 		}
 

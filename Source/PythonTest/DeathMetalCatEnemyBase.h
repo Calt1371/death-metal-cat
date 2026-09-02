@@ -100,6 +100,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float XPReward = 10.f;
 
+	/** Inclusive random range of Scraps currency awarded (via ADeathMetalCatCharacter::AddScraps) to whoever lands the killing blow -- same "exactly once per real kill" timing as XPReward, right next to it in TakeDamage. Placeholder values, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	int32 ScrapRewardMin = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	int32 ScrapRewardMax = 10;
+
 	/** How long (seconds) the enemy stays hidden/dead before auto-respawning at its cached spawn location. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float RespawnDelay = 3.f;

@@ -131,9 +131,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float MeleeRange = 100.f;
 
-	/** Damage applied to the player, via the existing ApplyDamage/TakeDamage path, whenever plain 3D distance to the player is within MeleeRange (gated by ContactDamageCooldown). The player's own CanTakeDamage()/i-frame check is not duplicated here. Placeholder value, tune freely. */
+	/** Damage applied to the player, via the existing ApplyDamage/TakeDamage path, whenever plain 3D distance to the player is within MeleeRange (gated by ContactDamageCooldown). The player's own CanTakeDamage()/i-frame check is not duplicated here. Halved from 10 -- enemy damage overall was landing too hard. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
-	float ContactDamage = 10.f;
+	float ContactDamage = 5.f;
 
 	/** Minimum seconds between contact-damage applications while continuously within MeleeRange of the player. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
@@ -152,9 +152,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
 	float ProjectileSpeed = 800.f;
 
-	/** Damage a projectile deals on hitting the player, via the same ApplyDamage path as contact damage. Halved from the original 8 -- enemy ranged damage was landing too hard. Placeholder value, tune freely. */
+	/** Damage a projectile deals on hitting the player, via the same ApplyDamage path as contact damage. Halved from the original 8, then halved again from 4 -- enemy damage overall was landing too hard. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))
-	float ProjectileDamage = 4.f;
+	float ProjectileDamage = 2.f;
 
 	/** Seconds a projectile survives before self-destructing if it never hits the player -- at a constant ProjectileSpeed this also caps its effective max range. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ranged Attack", meta = (ClampMin = "0"))

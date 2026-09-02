@@ -85,7 +85,7 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 
 	Health = MaxHealth;
 
-	// Snap onto the player's exact X-Z gameplay plane (Y and Z) before caching the spawn
+	// Snap onto the player's exact Y (the locked gameplay-depth plane) before caching the spawn
 	// transform below, rather than trusting however precisely this actor was dragged into the 3D
 	// viewport. This is a real fix for large-scale placement drift (a 116-unit Y gap was measured
 	// on the placed enemy that exposed the gun-fire miss bug), distinct from -- and in addition to
@@ -94,14 +94,17 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 	// CharacterMovementComponent's plane constraint (see ADeathMetalCatCharacter's constructor),
 	// so reading it here is safe regardless of whether the player's own BeginPlay has run yet --
 	// placement itself isn't touched by that constraint, only future movement is.
+	// Z is deliberately left alone -- an earlier version of this fix also snapped Z to the
+	// player's, which quietly overwrote every marker's deliberate spawn height (floor, one-way
+	// platform, or mid-air for bFliesFreely enemies) with wherever the player happened to be
+	// standing at room entry. The plane constraint itself only locks Y (PlaneConstraintNormal is
+	// (0,1,0)), so a one-time Z snap here was never actually consistent with what it constrains.
 	if (ADeathMetalCatCharacter* PlayerCharacter = Cast<ADeathMetalCatCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
 		CachedPlayerCharacter = PlayerCharacter;
 
 		FVector Loc = GetActorLocation();
-		const FVector PlayerLoc = PlayerCharacter->GetActorLocation();
-		Loc.Y = PlayerLoc.Y;
-		Loc.Z = PlayerLoc.Z;
+		Loc.Y = PlayerCharacter->GetActorLocation().Y;
 		SetActorLocation(Loc);
 	}
 

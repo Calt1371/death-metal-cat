@@ -31,27 +31,29 @@ void ARoomProgressionManager::BeginPlay()
 
 	CurrentRoomID = StartingRoomID;
 
-	// Only the starting room is active at level start -- every other placed RoomShell (including
-	// both branch rooms) starts hidden/collision-disabled until AdvanceToRoom reaches it.
+	// Every placed RoomShell is active from level start now -- the "hide every room but the
+	// current one" behavior below was built back when all rooms shared one physical world
+	// position (see AdvanceToRoom's own teleport comment) and needed hiding so overlapping rooms
+	// didn't render on top of each other. Rooms are now hand-built at real, separate locations,
+	// so nothing needs hiding for that reason anymore, and the player can't see or reach a room
+	// they haven't been teleported to yet regardless. AdvanceToRoom's teleport-on-exit, the fade
+	// transition, and RegisterEnemy/NotifyEnemyDefeated/barrier gating are all untouched -- this
+	// only changes the level-start default.
 	for (const TPair<ERoomID, TObjectPtr<ARoomShell>>& Pair : RoomShellsByID)
 	{
 		if (Pair.Value)
 		{
-			Pair.Value->SetRoomActive(Pair.Key == CurrentRoomID);
+			Pair.Value->SetRoomActive(true);
 		}
 	}
 }
 
 void ARoomProgressionManager::AdvanceToRoom(ERoomID NewRoomID)
 {
-	if (TObjectPtr<ARoomShell>* CurrentShell = RoomShellsByID.Find(CurrentRoomID))
-	{
-		if (*CurrentShell)
-		{
-			(*CurrentShell)->SetRoomActive(false);
-		}
-	}
-
+	// The room being left is deliberately NOT deactivated anymore -- see BeginPlay's own comment.
+	// Every room stays active/visible once the level starts; this only still activates the target
+	// room explicitly as a safety net (e.g. if a shell somehow wasn't in RoomShellsByID yet at
+	// BeginPlay), not because anything actually needs re-activating in the normal case.
 	if (TObjectPtr<ARoomShell>* NextShell = RoomShellsByID.Find(NewRoomID))
 	{
 		if (*NextShell)

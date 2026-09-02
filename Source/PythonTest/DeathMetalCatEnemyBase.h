@@ -36,10 +36,12 @@ enum class EEnemyShootPhase : uint8
  *
  * At 0 health, rather than being destroyed outright, the actor hides itself, disables its own
  * collision, and auto-respawns at its cached (plane-corrected) spawn location after RespawnDelay
- * -- a testing convenience so the same enemy can be repeatedly killed (for XP/GnarlyRank/damage
- * testing) without manually re-placing one in the level each time. This is purely a visual/state
- * reset: the death/XP-awarding logic in TakeDamage runs exactly once per kill regardless,
- * unaffected by however many times the enemy subsequently respawns.
+ * -- originally a pure testing convenience so the same enemy could be repeatedly killed without
+ * manually re-placing one in the level each time, now also doubling as real run pacing: each
+ * instance only gets RespawnCountMin..RespawnCountMax respawns (rolled once at BeginPlay, see
+ * RespawnsAllowed) before it stays dead for the rest of the run instead of respawning forever --
+ * see TickDeathBlink. The death/XP-awarding logic in TakeDamage always runs exactly once per
+ * kill regardless, unaffected by whether that kill was this enemy's last respawn or not.
  *
  * Minimal contact-attack behavior, deliberately no AI/pathfinding system: every Tick, if the
  * player is within DetectionRadius (a plain 3D distance check, not vision/line-of-sight), this
@@ -101,6 +103,18 @@ public:
 	/** How long (seconds) the enemy stays hidden/dead before auto-respawning at its cached spawn location. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float RespawnDelay = 3.f;
+
+	/**
+	 * Inclusive random range this enemy's total respawn allotment is rolled from once at BeginPlay
+	 * (see RespawnsAllowed) -- each enemy instance auto-respawns anywhere from RespawnCountMin to
+	 * RespawnCountMax times before TickDeathBlink stops arming the respawn timer and it stays dead
+	 * for the rest of the run, instead of respawning forever. Placeholder values, tune freely.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	int32 RespawnCountMin = 2;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
+	int32 RespawnCountMax = 3;
 
 	/** Plain 3D distance (uu) within which this enemy notices the player and starts advancing -- not vision/line-of-sight, just a radius check. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
@@ -320,6 +334,12 @@ private:
 
 	/** Actor transform cached in BeginPlay -- where HandleRespawn puts the actor back after RespawnDelay. */
 	FTransform InitialSpawnTransform;
+
+	/** Rolled once in BeginPlay from [RespawnCountMin, RespawnCountMax] -- how many more times this specific enemy instance is allowed to auto-respawn before TickDeathBlink stops arming another respawn timer and it stays dead for good. */
+	int32 RespawnsAllowed = 0;
+
+	/** How many times HandleRespawn has actually fired so far for this instance; compared against RespawnsAllowed in TickDeathBlink. */
+	int32 RespawnsUsed = 0;
 
 	/** True from the moment Health reaches 0 (TakeDamage) until HandleRespawn resets it. Guards against TakeDamage running again (and double-awarding XP) during the hidden/respawn window -- collision is disabled then, so this shouldn't normally be reachable, but it's a cheap, explicit guarantee rather than relying solely on that. */
 	bool bIsDead = false;

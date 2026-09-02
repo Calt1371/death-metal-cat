@@ -134,6 +134,10 @@ void ADeathMetalCatEnemyBase::BeginPlay()
 
 	InitialSpawnTransform = GetActorTransform();
 
+	// Rolled once per instance so respawn counts vary spawn point to spawn point across a run,
+	// rather than every enemy in the level using up its last life on the exact same encounter.
+	RespawnsAllowed = FMath::RandRange(RespawnCountMin, RespawnCountMax);
+
 	if (PlaceholderMesh)
 	{
 		if (PlaceholderMaterial)
@@ -532,12 +536,21 @@ void ADeathMetalCatEnemyBase::TickDeathBlink()
 	{
 		GetWorldTimerManager().ClearTimer(DeathBlinkTimerHandle);
 		SetActorHiddenInGame(true);
-		GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ADeathMetalCatEnemyBase::HandleRespawn, RespawnDelay, false);
+
+		// Out of respawns for this run -- stay right here (hidden, collision already disabled by
+		// HandleDeath) instead of arming another respawn timer. No further state change needed;
+		// this is exactly the "permanently defeated" state already reached by this point.
+		if (RespawnsUsed < RespawnsAllowed)
+		{
+			GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ADeathMetalCatEnemyBase::HandleRespawn, RespawnDelay, false);
+		}
 	}
 }
 
 void ADeathMetalCatEnemyBase::HandleRespawn()
 {
+	++RespawnsUsed;
+
 	SetActorTransform(InitialSpawnTransform);
 	Health = MaxHealth;
 	bIsDead = false;

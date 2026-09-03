@@ -29,11 +29,24 @@ namespace
 	// for "about 20 seconds".
 	constexpr float FreezeHoldSeconds = 20.f;
 
-	// How far before the true end of the stream playback is paused. ~2.5 frames at 30fps -- long
-	// enough to reliably beat the decoder to EOF (which would drop the player into the stopped
-	// state this whole approach exists to avoid, see the class comment), short enough that the
-	// held frame is visually the last one. Raise this if the freeze ever flickers black.
-	constexpr float FreezeMarginSeconds = 0.08f;
+	// How far before the true end of the stream playback is paused.
+	//
+	// Measured, not guessed: at 0.08s this lost the race to EOF on every single cycle, because
+	// GetTime() advances in decoded-frame steps rather than continuously, and the game ticks on its
+	// own unrelated cadence -- so the last value observed before EOF can sit a couple of frames
+	// short of the margin and the check never fires. 0.25s is ~6 source frames of headroom, which
+	// comfortably absorbs that aliasing while still being far inside the static title card at the
+	// end of the clip, so the held image is the intended one.
+	constexpr float FreezeMarginSeconds = 0.25f;
+
+	// Smallest believable video dimension. UMediaTexture reports a 2x2 placeholder before its first
+	// real frame arrives, and latching that (as this did originally) leaves the ScaleBox fitting a
+	// 1:1 box -- which silently squashes the actual 16:9 video into a square.
+	constexpr int32 MinPlausibleVideoDimension = 16;
+
+	// How long the Restarting state waits for an issued Seek to actually rewind the clock before
+	// giving up and reopening the source outright.
+	constexpr float RestartTimeoutSeconds = 2.f;
 
 	// Prompt pulse. The floor is deliberately well above zero: the brief asks for the prompt to be
 	// visible throughout, so this reads as a slow breath rather than a blink.
@@ -214,26 +227,41 @@ void UTitleScreenWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 void UTitleScreenWidget::ApplyVideoDimensions()
 {
-	if (bVideoDimensionsApplied || !MediaTexture || !VideoImage)
+	if (bVideoDimensionsApplied || !VideoImage)
 	{
 		return;
 	}
 
-	// Zero until the first decoded frame lands in the texture; the ScaleBox has nothing meaningful
-	// to fit against before then, so just wait for it.
-	const float Width = MediaTexture->GetSurfaceWidth();
-	const float Height = MediaTexture->GetSurfaceHeight();
-	if (Width <= 0.f || Height <= 0.f)
+	// Ask the player for the selected video track's real dimensions (INDEX_NONE means "whichever
+	// track/format is currently selected") rather than the texture's surface size. The texture
+	// reports a 2x2 placeholder until its first frame lands, and that is exactly the value this
+	// used to latch.
+	FIntPoint Dimensions(0, 0);
+	if (MediaPlayer)
+	{
+		Dimensions = MediaPlayer->GetVideoTrackDimensions(INDEX_NONE, INDEX_NONE);
+	}
+
+	// Fall back to the texture once a real frame has arrived, in case a backend does not report
+	// track dimensions.
+	if ((Dimensions.X < MinPlausibleVideoDimension || Dimensions.Y < MinPlausibleVideoDimension) && MediaTexture)
+	{
+		Dimensions.X = FMath::RoundToInt(MediaTexture->GetSurfaceWidth());
+		Dimensions.Y = FMath::RoundToInt(MediaTexture->GetSurfaceHeight());
+	}
+
+	// Still a placeholder -- keep waiting rather than latching a wrong aspect ratio for good.
+	if (Dimensions.X < MinPlausibleVideoDimension || Dimensions.Y < MinPlausibleVideoDimension)
 	{
 		return;
 	}
 
 	// A UImage's desired size comes from its brush image size, and that desired size is exactly what
 	// the enclosing ScaleBox fits -- so this is what gives the letterboxing a correct aspect ratio.
-	VideoImage->SetDesiredSizeOverride(FVector2D(Width, Height));
+	VideoImage->SetDesiredSizeOverride(FVector2D(Dimensions.X, Dimensions.Y));
 	bVideoDimensionsApplied = true;
 
-	UE_LOG(LogTemp, Log, TEXT("[TITLE] Video dimensions resolved: %.0fx%.0f"), Width, Height);
+	UE_LOG(LogTemp, Log, TEXT("[TITLE] Video dimensions resolved: %dx%d"), Dimensions.X, Dimensions.Y);
 }
 
 void UTitleScreenWidget::UpdateVideoCycle()
@@ -293,6 +321,35 @@ void UTitleScreenWidget::UpdateVideoCycle()
 		}
 		break;
 	}
+
+	case EVideoState::Restarting:
+	{
+		const FTimespan Duration = MediaPlayer->GetDuration();
+		if (Duration <= FTimespan::Zero())
+		{
+			break;
+		}
+
+		// Only hand back to Playing once the clock has genuinely rewound clear of the freeze point.
+		// Resuming any earlier just re-triggers the freeze check on the same near-the-end timestamp.
+		const FTimespan FreezeAt = Duration - FTimespan::FromSeconds(FreezeMarginSeconds);
+		if (MediaPlayer->GetTime() < FreezeAt)
+		{
+			VideoState = EVideoState::Playing;
+			break;
+		}
+
+		if (World->GetTimeSeconds() - RestartRequestTime >= RestartTimeoutSeconds)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[TITLE] Seek did not rewind within %.0fs -- reopening the source."), RestartTimeoutSeconds);
+			if (MediaSource)
+			{
+				MediaPlayer->OpenSource(MediaSource);
+			}
+			VideoState = EVideoState::Opening;
+		}
+		break;
+	}
 	}
 }
 
@@ -321,7 +378,14 @@ void UTitleScreenWidget::RestartVideo()
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[TITLE] Hold finished -- replaying from the start."));
-	VideoState = EVideoState::Playing;
+
+	// Not straight to Playing: the seek is asynchronous, so wait for the clock to actually rewind.
+	// See the Restarting enumerator's comment.
+	if (const UWorld* World = GetWorld())
+	{
+		RestartRequestTime = World->GetTimeSeconds();
+	}
+	VideoState = EVideoState::Restarting;
 }
 
 void UTitleScreenWidget::HandleMediaEndReached()

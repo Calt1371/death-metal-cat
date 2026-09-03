@@ -69,6 +69,14 @@ private:
 		Playing,
 		/** Paused on the final frame, counting down FreezeHoldSeconds. */
 		Frozen,
+		/**
+		 * Seek(0) has been issued but the player's clock has not rewound yet. This state exists
+		 * because Seek is asynchronous: for at least one tick afterwards GetTime() still reports the
+		 * old near-the-end value, and going straight back to Playing meant the freeze check matched
+		 * immediately and re-froze the video milliseconds after resuming it -- so from the second
+		 * cycle onward the video never actually replayed.
+		 */
+		Restarting,
 	};
 
 	/** Per-tick state machine for the play/freeze/hold/replay cycle. No-ops once bStartTriggered. */
@@ -126,6 +134,9 @@ private:
 
 	/** GetWorld()->GetTimeSeconds() at the moment the video was paused on its final frame. */
 	float FreezeStartTime = 0.f;
+
+	/** GetWorld()->GetTimeSeconds() at the moment RestartVideo issued its Seek -- bounds how long the Restarting state waits for the clock to rewind before forcing a full reopen. */
+	float RestartRequestTime = 0.f;
 
 	/** True once ApplyVideoDimensions has pushed real dimensions into the brush. */
 	bool bVideoDimensionsApplied = false;

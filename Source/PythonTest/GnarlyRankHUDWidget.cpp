@@ -147,11 +147,20 @@ bool UGnarlyRankHUDWidget::Initialize()
 		// portrait (which does change with rank). A plain UImage in a Canvas slot has NO built-in
 		// aspect-ratio preservation -- SetBrushFromTexture doesn't change how the brush is stretched,
 		// it's the Canvas slot's own explicit SetSize below that the brush gets stretched to fill,
-		// non-uniformly, corrected here (previously a hardcoded 240x120 -- 2:1 -- box, silently
-		// squashing this asset's real 2172x724 / ~3:1 art horizontally; only went unnoticed with the
-		// original plain-text logo because its aspect happened to be close to 2:1). Width is derived
-		// from the loaded texture's own pixel dimensions, so this stays correct automatically if the
-		// logo art is ever swapped again.
+		// non-uniformly, so the width below is deliberately computed from this asset's own known
+		// aspect ratio (2172x724, ~3:1) rather than a hardcoded 2:1 box (the original bug this whole
+		// block exists to avoid).
+		//
+		// That ratio is a HARDCODED constant, not read live from LogoTexture->GetSizeX()/GetSizeY()
+		// -- it used to be, but confirmed live (2026-09-03) that a texture's very first load in a
+		// fresh process can't be trusted to report its real dimensions from GetSizeX()/GetSizeY() at
+		// the exact moment right after LoadObject returns: reproducible on every standalone (-game)
+		// launch (always cold) and on the first PIE session after opening the editor, but NOT on a
+		// second PIE run in the same already-open editor (where the texture is now warm in memory) --
+		// the logo rendered squashed specifically when that live read was still wrong. Hardcoding the
+		// known-correct ratio removes the dependency on that read entirely, rather than trying to work
+		// around its timing. If this logo art is ever swapped for a different asset, update
+		// LogoSourceAspectRatio to match its own real dimensions.
 		//
 		// Height raised 120 -> 170: at 120 the logo's own internal art (ornate red flourishes
 		// crowding the "GNARLY RANK" text, plus a small subtitle line) read as illegibly cramped in
@@ -163,18 +172,13 @@ bool UGnarlyRankHUDWidget::Initialize()
 		LogoImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("GnarlyLogoImage"));
 
 		UTexture2D* LogoTexture = LoadObject<UTexture2D>(nullptr, GnarlyLogoPath);
-		float LogoWidth = 240.f;
 		const float LogoHeight = 170.f;
 		constexpr float TopStackYShift = 50.f; // 170 - 120, the amount LogoHeight grew by
+		constexpr float LogoSourceAspectRatio = 2172.f / 724.f;
+		const float LogoWidth = LogoHeight * LogoSourceAspectRatio;
 		if (LogoTexture)
 		{
 			LogoImage->SetBrushFromTexture(LogoTexture);
-			const float TexWidth = static_cast<float>(LogoTexture->GetSizeX());
-			const float TexHeight = static_cast<float>(LogoTexture->GetSizeY());
-			if (TexHeight > 0.f)
-			{
-				LogoWidth = LogoHeight * (TexWidth / TexHeight);
-			}
 		}
 		else
 		{

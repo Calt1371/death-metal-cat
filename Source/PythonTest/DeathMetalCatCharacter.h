@@ -315,10 +315,10 @@ protected:
 	/** Called every Tick while bIsFadingOutForUltimate: shrinks the sprite's scale toward 0 over UltimateFadeOutDuration, then calls BeginUltimateTransformation once it reaches 0. */
 	void UpdateUltimateFadeOut(float DeltaSeconds);
 
-	/** Swaps into the "riding Fancy Pants" state: sets bIsTransformed, restores sprite scale to 1 (now showing FancyIdleFlipbook instead of the just-shrunk normal sprite), and arms the 10-second UltimateDurationTimerHandle. */
+	/** Swaps into the "riding Fancy Pants" state: sets bIsTransformed, restores sprite scale to 1 (now showing FancyIdleFlipbook instead of the just-shrunk normal sprite), grows the capsule by FancyCapsuleHalfHeightScale/FancyCapsuleRadiusScale (same move-up-then-grow idiom as BeginCatNip), and arms the 10-second UltimateDurationTimerHandle. */
 	void BeginUltimateTransformation();
 
-	/** Timer callback (fired UltimateDuration seconds after BeginUltimateTransformation): reverts bIsTransformed to false (an instant swap back, not a mirrored fade -- see its own doc comment for why) and resets RageMeter to 0. */
+	/** Timer callback (fired UltimateDuration seconds after BeginUltimateTransformation): reverts bIsTransformed to false (an instant swap back, not a mirrored fade -- see its own doc comment for why), shrinks the capsule back to solo Cayde's own size (same shrink-then-move-down idiom as EndCatNip), and resets RageMeter to 0. */
 	void EndUltimateTransformation();
 
 	/**
@@ -1218,6 +1218,32 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))
 	float UltimateFadeOutDuration = 0.25f;
+
+	/**
+	 * How much taller Fancy Pants' collision capsule is than solo Cayde's own capsule --
+	 * BeginUltimateTransformation/EndUltimateTransformation resize GetCapsuleComponent()'s
+	 * half-height by this around a fixed floor-contact point, the same "grow/shrink while keeping
+	 * feet planted" idiom BeginCatNip/EndCatNip already established (see
+	 * CatNipCapsuleHalfHeightScale's own doc comment) -- without it the capsule never resized at all
+	 * while transformed, so the much taller mount sprite floated above the unchanged solo-Cayde-sized
+	 * capsule instead of standing on the platform surface. Matches the mount's own measured art scale
+	 * rather than a guess: ue_resize_and_fix_fancy_cayde.py re-imported all three Fancy flipbooks
+	 * 1.5x bigger (256px cells -> 384px) to fix a "barely bigger than solo Cayde" playtest report, so
+	 * the capsule grows by that same 1.5x.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0.1"))
+	float FancyCapsuleHalfHeightScale = 1.5f;
+
+	/**
+	 * How much wider Fancy Pants' collision capsule is than solo Cayde's own -- deliberately left at
+	 * 1.0 (unchanged), same reasoning as CatNipCapsuleRadiusScale: widening this too risks the same
+	 * phantom "invisible wall" collision against room geometry that scaling CatNip's radius caused,
+	 * and the reported bug (capsule not sitting on the platform surface) is purely a floor-contact
+	 * (half-height) problem. Placeholder value, tune freely if Fancy Pants' hitbox ever needs to read
+	 * as visibly wider too.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0.1"))
+	float FancyCapsuleRadiusScale = 1.0f;
 
 	/** How long (seconds) the rainbow beam-from-the-sky effect actor lives before self-destructing -- see SpawnRageBeamEffect. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Rage", meta = (ClampMin = "0"))

@@ -1217,6 +1217,19 @@ void ADeathMetalCatCharacter::BeginUltimateTransformation()
 		}
 	}
 
+	// Fancy Pants gets his own, taller capsule -- same "move up then grow into the vacated space"
+	// idiom as BeginCatNip (see its own comment for why that ordering avoids reading as sinking into
+	// the floor). Nothing gated this on bIsTransformed already being true first, unlike CatNip's
+	// re-trigger case: TryActivateUltimate already refuses to fire while bIsTransformed, so this can
+	// never run twice in a row against an already-resized capsule.
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		const float NewHalfHeight = OriginalCapsuleHalfHeight * FancyCapsuleHalfHeightScale;
+		const float NewRadius = OriginalCapsuleRadius * FancyCapsuleRadiusScale;
+		AddActorWorldOffset(FVector(0.f, 0.f, NewHalfHeight - OriginalCapsuleHalfHeight));
+		Capsule->SetCapsuleSize(NewRadius, NewHalfHeight, true);
+	}
+
 	// FancyFeed pickups (ItemUltimateDurationBonus) extend this for the rest of the run.
 	const float ActualDuration = UltimateDuration + ItemUltimateDurationBonus;
 	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Transformed -- riding Fancy Pants for %.1fs"), ActualDuration);
@@ -1229,6 +1242,18 @@ void ADeathMetalCatCharacter::EndUltimateTransformation()
 	// and simpler: UpdateAnimation's normal Idle/Run selection takes over on the very next Tick
 	// purely because bIsTransformed is now false, so there's nothing else to set here.
 	bIsTransformed = false;
+
+	// Shrink back to solo Cayde's own capsule size -- resized FIRST (while still at the elevated
+	// Fancy Pants position), THEN the actor drops down by the same delta, same reverse-order
+	// shrink-then-move idiom as EndCatNip (see its own comment for why that avoids a transient
+	// interpenetration either direction).
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		const float CurrentHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+		Capsule->SetCapsuleSize(OriginalCapsuleRadius, OriginalCapsuleHalfHeight, true);
+		AddActorWorldOffset(FVector(0.f, 0.f, OriginalCapsuleHalfHeight - CurrentHalfHeight));
+	}
+
 	RageMeter = 0.f;
 	UE_LOG(LogTemp, Warning, TEXT("[RAGE] Ultimate ended -- reverted to normal Cayde, Rage reset to 0"));
 }

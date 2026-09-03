@@ -2,6 +2,7 @@
 
 #include "TitleScreenPlayerController.h"
 #include "TitleScreenWidget.h"
+#include "DMCGameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
@@ -17,6 +18,14 @@ ATitleScreenGameMode::ATitleScreenGameMode()
 void ATitleScreenGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// L_TitleScreen is this game's actual entry point (GameDefaultMap), so this is the earliest a
+	// valid World/audio device exists to apply the player's saved volume/brightness against -- see
+	// UDMCGameInstance's class comment for why Init() itself can't do this.
+	if (UDMCGameInstance* GameInstance = Cast<UDMCGameInstance>(GetGameInstance()))
+	{
+		GameInstance->ApplyStartupSettings(this);
+	}
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
 	if (!PC)

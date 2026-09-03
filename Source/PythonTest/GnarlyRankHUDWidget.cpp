@@ -149,14 +149,23 @@ bool UGnarlyRankHUDWidget::Initialize()
 		// it's the Canvas slot's own explicit SetSize below that the brush gets stretched to fill,
 		// non-uniformly, corrected here (previously a hardcoded 240x120 -- 2:1 -- box, silently
 		// squashing this asset's real 2172x724 / ~3:1 art horizontally; only went unnoticed with the
-		// original plain-text logo because its aspect happened to be close to 2:1). Height pinned at
-		// 120 (matching the original box's footprint) and width derived from the loaded texture's own
-		// pixel dimensions, so this stays correct automatically if the logo art is ever swapped again.
+		// original plain-text logo because its aspect happened to be close to 2:1). Width is derived
+		// from the loaded texture's own pixel dimensions, so this stays correct automatically if the
+		// logo art is ever swapped again.
+		//
+		// Height raised 120 -> 170: at 120 the logo's own internal art (ornate red flourishes
+		// crowding the "GNARLY RANK" text, plus a small subtitle line) read as illegibly cramped in
+		// live testing -- confirmed by screenshot, not just a guess. The art itself wasn't changed;
+		// this is purely a bigger on-screen footprint for the same texture. Every other element in
+		// this top-left stack (RankText down through ScrapsText) is shifted down by the same amount
+		// this grew (TopStackYShift) so none of the existing vertical spacing between THEM changes,
+		// only the gap this opened up at the very top.
 		LogoImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("GnarlyLogoImage"));
 
 		UTexture2D* LogoTexture = LoadObject<UTexture2D>(nullptr, GnarlyLogoPath);
 		float LogoWidth = 240.f;
-		const float LogoHeight = 120.f;
+		const float LogoHeight = 170.f;
+		constexpr float TopStackYShift = 50.f; // 170 - 120, the amount LogoHeight grew by
 		if (LogoTexture)
 		{
 			LogoImage->SetBrushFromTexture(LogoTexture);
@@ -201,7 +210,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			RankTextSlot->SetAnchors(FAnchors(0.f, 0.f));
 			RankTextSlot->SetAlignment(FVector2D(0.f, 0.f));
-			RankTextSlot->SetPosition(FVector2D(30.f, 140.f));
+			RankTextSlot->SetPosition(FVector2D(30.f, 140.f + TopStackYShift));
 			RankTextSlot->SetAutoSize(true);
 		}
 
@@ -222,7 +231,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			PortraitSlot->SetAnchors(FAnchors(0.f, 0.f));
 			PortraitSlot->SetAlignment(FVector2D(0.f, 0.f));
-			PortraitSlot->SetPosition(FVector2D(250.f, 135.f));
+			PortraitSlot->SetPosition(FVector2D(250.f, 135.f + TopStackYShift));
 			PortraitSlot->SetSize(FVector2D(88.f, 88.f));
 			PortraitSlot->SetAutoSize(false);
 		}
@@ -250,7 +259,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			LevelTextSlot->SetAnchors(FAnchors(0.f, 0.f));
 			LevelTextSlot->SetAlignment(FVector2D(0.f, 0.f));
-			LevelTextSlot->SetPosition(FVector2D(30.f, 230.f));
+			LevelTextSlot->SetPosition(FVector2D(30.f, 230.f + TopStackYShift));
 			LevelTextSlot->SetAutoSize(true);
 		}
 
@@ -262,7 +271,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			HealthBarSlot->SetAnchors(FAnchors(0.f, 0.f));
 			HealthBarSlot->SetAlignment(FVector2D(0.f, 0.f));
-			HealthBarSlot->SetPosition(FVector2D(30.f, 270.f));
+			HealthBarSlot->SetPosition(FVector2D(30.f, 270.f + TopStackYShift));
 			HealthBarSlot->SetSize(FVector2D(220.f, 24.f));
 			HealthBarSlot->SetAutoSize(false);
 		}
@@ -278,7 +287,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			HealthTextSlot->SetAnchors(FAnchors(0.f, 0.f));
 			HealthTextSlot->SetAlignment(FVector2D(0.f, 0.f));
-			HealthTextSlot->SetPosition(FVector2D(260.f, 270.f));
+			HealthTextSlot->SetPosition(FVector2D(260.f, 270.f + TopStackYShift));
 			HealthTextSlot->SetAutoSize(true);
 		}
 
@@ -291,7 +300,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			RageBarSlot->SetAnchors(FAnchors(0.f, 0.f));
 			RageBarSlot->SetAlignment(FVector2D(0.f, 0.f));
-			RageBarSlot->SetPosition(FVector2D(30.f, 304.f));
+			RageBarSlot->SetPosition(FVector2D(30.f, 304.f + TopStackYShift));
 			RageBarSlot->SetSize(FVector2D(220.f, 24.f));
 			RageBarSlot->SetAutoSize(false);
 		}
@@ -309,7 +318,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			RageLabelSlot->SetAnchors(FAnchors(0.f, 0.f));
 			RageLabelSlot->SetAlignment(FVector2D(0.f, 0.f));
-			RageLabelSlot->SetPosition(FVector2D(260.f, 304.f));
+			RageLabelSlot->SetPosition(FVector2D(260.f, 304.f + TopStackYShift));
 			RageLabelSlot->SetAutoSize(true);
 		}
 
@@ -327,7 +336,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			ScrapsImageSlot->SetAnchors(FAnchors(0.f, 0.f));
 			ScrapsImageSlot->SetAlignment(FVector2D(0.f, 0.f));
-			ScrapsImageSlot->SetPosition(FVector2D(30.f, 338.f));
+			ScrapsImageSlot->SetPosition(FVector2D(30.f, 338.f + TopStackYShift));
 			ScrapsImageSlot->SetSize(FVector2D(24.f, 24.f));
 			ScrapsImageSlot->SetAutoSize(false);
 		}
@@ -343,7 +352,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 		{
 			ScrapsTextSlot->SetAnchors(FAnchors(0.f, 0.f));
 			ScrapsTextSlot->SetAlignment(FVector2D(0.f, 0.f));
-			ScrapsTextSlot->SetPosition(FVector2D(60.f, 338.f));
+			ScrapsTextSlot->SetPosition(FVector2D(60.f, 338.f + TopStackYShift));
 			ScrapsTextSlot->SetAutoSize(true);
 		}
 

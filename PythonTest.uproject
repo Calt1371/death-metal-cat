@@ -25,6 +25,17 @@
 		{
 			"Name": "EnhancedInput",
 			"Enabled": true
+		},
+		{
+			"Name": "WmfMedia",
+			"Enabled": true
+		},
+		{
+			"Name": "MediaPlayerEditor",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
 		}
 	]
 }

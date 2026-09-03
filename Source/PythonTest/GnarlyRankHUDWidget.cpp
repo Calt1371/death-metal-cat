@@ -144,15 +144,28 @@ bool UGnarlyRankHUDWidget::Initialize()
 
 		// Static "GNARLY RANK" logo, above the dynamic text. Own UImage, not shared with
 		// PortraitImage -- set once here and never touched again in RefreshDisplay, unlike the
-		// portrait (which does change with rank). UImage's default Stretch (ScaleToFit) preserves
-		// the source's own aspect ratio inside the fixed 240x120 box below, rather than
-		// stretching/squashing it to match exactly.
+		// portrait (which does change with rank). A plain UImage in a Canvas slot has NO built-in
+		// aspect-ratio preservation -- SetBrushFromTexture doesn't change how the brush is stretched,
+		// it's the Canvas slot's own explicit SetSize below that the brush gets stretched to fill,
+		// non-uniformly, corrected here (previously a hardcoded 240x120 -- 2:1 -- box, silently
+		// squashing this asset's real 2172x724 / ~3:1 art horizontally; only went unnoticed with the
+		// original plain-text logo because its aspect happened to be close to 2:1). Height pinned at
+		// 120 (matching the original box's footprint) and width derived from the loaded texture's own
+		// pixel dimensions, so this stays correct automatically if the logo art is ever swapped again.
 		LogoImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("GnarlyLogoImage"));
 
 		UTexture2D* LogoTexture = LoadObject<UTexture2D>(nullptr, GnarlyLogoPath);
+		float LogoWidth = 240.f;
+		const float LogoHeight = 120.f;
 		if (LogoTexture)
 		{
 			LogoImage->SetBrushFromTexture(LogoTexture);
+			const float TexWidth = static_cast<float>(LogoTexture->GetSizeX());
+			const float TexHeight = static_cast<float>(LogoTexture->GetSizeY());
+			if (TexHeight > 0.f)
+			{
+				LogoWidth = LogoHeight * (TexWidth / TexHeight);
+			}
 		}
 		else
 		{
@@ -164,7 +177,7 @@ bool UGnarlyRankHUDWidget::Initialize()
 			LogoSlot->SetAnchors(FAnchors(0.f, 0.f));
 			LogoSlot->SetAlignment(FVector2D(0.f, 0.f));
 			LogoSlot->SetPosition(FVector2D(20.f, 10.f));
-			LogoSlot->SetSize(FVector2D(240.f, 120.f));
+			LogoSlot->SetSize(FVector2D(LogoWidth, LogoHeight));
 			LogoSlot->SetAutoSize(false);
 		}
 
@@ -173,8 +186,16 @@ bool UGnarlyRankHUDWidget::Initialize()
 		RankText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GnarlyRankText"));
 		FSlateFontInfo Font = RankText->GetFont();
 		Font.Size = 28;
+		// Bold + a dark red outline + a cyan fill, evoking T_GnarlyRank_Logo's own jagged red/cyan
+		// look (no imported font asset for this project matches that art directly -- this reuses the
+		// engine's own default composite font's Bold typeface rather than the plain Regular weight
+		// every other HUD text element still uses, so this specific label reads as tougher/more
+		// "metal" without needing a new font asset).
+		Font.TypefaceFontName = TEXT("Bold");
+		Font.OutlineSettings.OutlineSize = 2;
+		Font.OutlineSettings.OutlineColor = FLinearColor(0.25f, 0.02f, 0.02f, 1.f);
 		RankText->SetFont(Font);
-		RankText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		RankText->SetColorAndOpacity(FSlateColor(FLinearColor(0.35f, 0.95f, 0.95f, 1.f)));
 
 		if (UCanvasPanelSlot* RankTextSlot = RootCanvas->AddChildToCanvas(RankText))
 		{

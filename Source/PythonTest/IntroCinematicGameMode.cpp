@@ -2,6 +2,7 @@
 
 #include "IntroCinematicPlayerController.h"
 #include "IntroCinematicWidget.h"
+#include "DMCGameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
@@ -17,6 +18,13 @@ AIntroCinematicGameMode::AIntroCinematicGameMode()
 void AIntroCinematicGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Idempotent re-application (already applied once in ATitleScreenGameMode::BeginPlay) -- see
+	// UDMCGameInstance's class comment.
+	if (UDMCGameInstance* GameInstance = Cast<UDMCGameInstance>(GetGameInstance()))
+	{
+		GameInstance->ApplyStartupSettings(this);
+	}
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
 	if (!PC)

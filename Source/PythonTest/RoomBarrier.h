@@ -70,6 +70,18 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Room Barrier")
 	TObjectPtr<UPaperFlipbook> BarrierFlipbook;
 
+	/**
+	 * Applied to FlipbookComponent in BeginPlay instead of leaving it at the component's own
+	 * literal-white default -- same reasoning as ADeathMetalCatCharacter's BaseSpriteTintColor/
+	 * CatNipTintColor: this project's Unlit/Emissive-driven Paper2D material blooms out badly at
+	 * full-bright SpriteColor once combined with this level's dynamic auto-exposure, and this
+	 * barrier's own art is an especially bright glowing energy effect, so it's particularly
+	 * susceptible. Dimming this per-sprite tint (rather than touching the camera's exposure/bloom)
+	 * fixes readability without touching anything else in the scene.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Room Barrier")
+	FLinearColor BarrierTintColor = FLinearColor(0.02f, 0.02f, 0.02f, 1.f);
+
 	/** Cached once in BeginPlay via Cast<ARoomShell>(GetAttachParentActor()) -- this barrier does nothing (never blocks) if it isn't attached to a RoomShell, same fail-open reasoning as ARoomExitTrigger's own missing-manager guard. */
 	UPROPERTY(Transient)
 	TObjectPtr<ARoomShell> OwningRoomShell;

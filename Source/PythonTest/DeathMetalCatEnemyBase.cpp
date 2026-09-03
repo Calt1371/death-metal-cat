@@ -468,12 +468,14 @@ float ADeathMetalCatEnemyBase::TakeDamage(float DamageAmount, FDamageEvent const
 	{
 		bIsDead = true;
 
-		// Same "exactly once per real kill, unaffected by however many times this enemy
-		// subsequently respawns" reasoning as the XP award right below -- a cleared room must stay
-		// cleared even once the testing-convenience respawn brings enemies back, so this is
-		// deliberately never balanced by a re-registration call anywhere in HandleRespawn.
-		if (OwningRoomShell)
+		// Once per INSTANCE, not once per kill -- see bHasNotifiedRoomDefeat's own comment. Without
+		// this guard, an enemy that respawns (RespawnCountMin/Max) and dies again would decrement
+		// EnemiesRemaining a second time for the exact same registered enemy, letting a single
+		// farmed spawn point single-handedly zero out a room's count while a different, untouched
+		// enemy elsewhere in the room is still alive.
+		if (OwningRoomShell && !bHasNotifiedRoomDefeat)
 		{
+			bHasNotifiedRoomDefeat = true;
 			OwningRoomShell->NotifyEnemyDefeated();
 		}
 

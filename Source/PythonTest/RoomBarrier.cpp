@@ -33,6 +33,22 @@ void ARoomBarrier::BeginPlay()
 		UE_LOG(LogTemp, Error, TEXT("[ROOM BARRIER] %s is not attached to a RoomShell -- it will never block anything. Attach it to its room's RoomShell in the World Outliner."), *GetName());
 	}
 
+	FlipbookComponent->SetSpriteColor(BarrierTintColor);
+
+	// Placed instances of this Blueprint have twice now been found with BarrierFlipbook reading
+	// null in the level despite the Blueprint's own class defaults being correctly set (confirmed
+	// via a direct CDO query both times) -- an editor-session-specific staleness this project has
+	// hit more than once tonight (the same class of issue also bit BarrierFlipbook's original
+	// import). Rather than leave a silently blank/invisible barrier (collision would still block
+	// the player with nothing visible to explain why -- confirmed exactly this symptom in Room2),
+	// fall back to loading the one real barrier flipbook directly by path so this can't silently
+	// recur in whichever room this is placed in next.
+	if (!BarrierFlipbook)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ROOM BARRIER] %s has a null BarrierFlipbook -- falling back to loading FB_Trap_RoomBarrier directly. Re-dragging a fresh instance from BP_RoomBarrier is the real fix; this is a safety net, not a substitute for that."), *GetName());
+		BarrierFlipbook = LoadObject<UPaperFlipbook>(nullptr, TEXT("/Game/Environments/CityBiome/Traps/Flipbooks/FB_Trap_RoomBarrier.FB_Trap_RoomBarrier"));
+	}
+
 	if (BarrierFlipbook)
 	{
 		FlipbookComponent->SetFlipbook(BarrierFlipbook);

@@ -351,6 +351,21 @@ private:
 	/** True from the moment Health reaches 0 (TakeDamage) until HandleRespawn resets it. Guards against TakeDamage running again (and double-awarding XP) during the hidden/respawn window -- collision is disabled then, so this shouldn't normally be reachable, but it's a cheap, explicit guarantee rather than relying solely on that. */
 	bool bIsDead = false;
 
+	/**
+	 * True once this specific enemy instance has ever notified its RoomShell of a defeat (see
+	 * TakeDamage) -- guards NotifyEnemyDefeated so it only ever fires once per instance, not once
+	 * per kill. RegisterEnemy only increments EnemiesRemaining once per instance at BeginPlay, but
+	 * before this flag existed TakeDamage called NotifyEnemyDefeated on every kill, including every
+	 * post-respawn kill -- since RespawnCountMin/Max now lets a single instance die and respawn
+	 * multiple real times (no longer just an unlimited testing convenience nobody would exhaust),
+	 * a single farmed enemy could single-handedly decrement EnemiesRemaining past 0 while a
+	 * different, completely untouched enemy in the same room was still alive, incorrectly reading
+	 * the room as cleared. XP/Scraps are deliberately NOT gated by this same flag -- those should
+	 * keep paying out on every real kill, only the room-clear headcount needs a once-per-instance
+	 * guard.
+	 */
+	bool bHasNotifiedRoomDefeat = false;
+
 	/** Cached once in BeginPlay via UGameplayStatics::GetPlayerCharacter -- same lookup already used there for the plane-snap, reused here for detection/chase/contact-damage each Tick instead of querying every frame. A plain UPROPERTY pointer, so it's automatically nulled by GC if the player is ever destroyed. */
 	UPROPERTY(Transient)
 	TObjectPtr<ADeathMetalCatCharacter> CachedPlayerCharacter;

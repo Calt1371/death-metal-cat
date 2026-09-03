@@ -46,7 +46,7 @@ void ATitleScreenGameMode::HandleStartPressed()
 
 	if (TitleWidget)
 	{
-		TitleWidget->BeginStartTransition(StartFadeDuration);
+		TitleWidget->BeginFadeToBlack(StartFadeDuration);
 	}
 
 	GetWorldTimerManager().SetTimer(
@@ -57,9 +57,9 @@ void ATitleScreenGameMode::FinishStartTransition()
 {
 	if (IntroCinematicMap.IsNull())
 	{
-		// Expected for now -- the intro cinematic is the next task. The screen is already fully black
-		// at this point, so this is the "empty/black screen confirming the trigger fired" the brief
-		// asked for as a placeholder.
+		// Falls back to holding on black if BP_TitleScreenGameMode's IntroCinematicMap somehow ended
+		// up unset -- AgentScripts/ue_create_title_screen_assets.py points it at L_IntroCinematic,
+		// but this keeps a bad/cleared reference from hard-failing instead of just logging.
 		UE_LOG(LogTemp, Warning,
 			TEXT("[TITLE] >>> START TRIGGERED -- would proceed to the intro cinematic here. ")
 			TEXT("No IntroCinematicMap set, holding on black. Set it on BP_TitleScreenGameMode once the cinematic map exists."));

@@ -32,9 +32,10 @@ protected:
 	virtual void BeginPlay() override;
 
 	/**
-	 * The level to open once the fade completes. Left unset for now: the intro cinematic doesn't
-	 * exist yet, so out of the box this screen fades to black and logs that it got there. Set this
-	 * on BP_TitleScreenGameMode once the cinematic map exists and no code change is needed.
+	 * The level to open once the fade completes -- L_IntroCinematic, set on BP_TitleScreenGameMode
+	 * by AgentScripts/ue_create_title_screen_assets.py (rerun after ue_create_intro_cinematic_assets.py
+	 * has created that map). If somehow unset, FinishStartTransition falls back to holding on black
+	 * rather than hard-failing.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Title Screen")
 	TSoftObjectPtr<UWorld> IntroCinematicMap;

@@ -20,7 +20,10 @@ namespace
 
 	// Engine-provided 1x1 white texture -- tinted via SetColorAndOpacity to get a plain solid fill
 	// without a dedicated asset, exactly as UGnarlyRankHUDWidget does for its tint/fade overlays.
-	const TCHAR* WhiteSquarePath = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
+	// Name-prefixed rather than plain "WhiteSquarePath" because UE compiles the module as a unity
+	// build: every .cpp is concatenated into one translation unit, so anonymous-namespace names
+	// still collide across files, and GnarlyRankHUDWidget.cpp already defines that one.
+	const TCHAR* TitleWhiteSquarePath = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
 
 	// How long the title sits frozen on the final frame before the video replays. The brief asked
 	// for "about 20 seconds".
@@ -58,7 +61,7 @@ bool UTitleScreenWidget::Initialize()
 		UCanvasPanel* RootCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
 		WidgetTree->RootWidget = RootCanvas;
 
-		UTexture2D* WhiteTexture = LoadObject<UTexture2D>(nullptr, WhiteSquarePath);
+		UTexture2D* WhiteTexture = LoadObject<UTexture2D>(nullptr, TitleWhiteSquarePath);
 
 		// -- Black backdrop, added FIRST so everything else paints on top of it. This is what fills
 		// the letterbox bars the ScaleBox leaves when the screen's aspect ratio differs from the
@@ -273,6 +276,11 @@ void UTitleScreenWidget::UpdateVideoCycle()
 			MediaPlayer->SetRate(0.f);
 			FreezeStartTime = World->GetTimeSeconds();
 			VideoState = EVideoState::Frozen;
+
+			// Logged so the cycle's timing is verifiable from a log file rather than only by
+			// watching it -- pair this with the "resuming" line in RestartVideo.
+			UE_LOG(LogTemp, Log, TEXT("[TITLE] Froze on final frame at %.3fs of %.3fs -- holding %.0fs."),
+				MediaPlayer->GetTime().GetTotalSeconds(), Duration.GetTotalSeconds(), FreezeHoldSeconds);
 		}
 		break;
 	}
@@ -312,6 +320,7 @@ void UTitleScreenWidget::RestartVideo()
 		return;
 	}
 
+	UE_LOG(LogTemp, Log, TEXT("[TITLE] Hold finished -- replaying from the start."));
 	VideoState = EVideoState::Playing;
 }
 

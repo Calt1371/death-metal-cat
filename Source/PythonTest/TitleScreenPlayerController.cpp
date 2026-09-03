@@ -36,6 +36,7 @@ void ATitleScreenPlayerController::SetupInputComponent()
 	EKeys::GetAllKeys(AllKeys);
 
 	int32 BoundCount = 0;
+	int32 GamepadCount = 0;
 	for (const FKey& Key : AllKeys)
 	{
 		// Thumbstick/trigger axes report continuously; a resting controller's drift would start the
@@ -53,9 +54,17 @@ void ATitleScreenPlayerController::SetupInputComponent()
 
 		InputComponent->BindKey(Key, IE_Pressed, this, &ATitleScreenPlayerController::HandleAnyInput);
 		++BoundCount;
+		if (Key.IsGamepadKey())
+		{
+			++GamepadCount;
+		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[TITLE] Bound %d digital keys for any-button start."), BoundCount);
+	// The gamepad figure is called out separately because gamepad coverage is the specific thing
+	// EKeys::AnyKey would have silently failed at -- a zero here means controllers won't start the
+	// game and this screen is broken, even though keyboard would still appear to work fine.
+	UE_LOG(LogTemp, Log, TEXT("[TITLE] Bound %d digital keys for any-button start (%d of them gamepad)."),
+		BoundCount, GamepadCount);
 }
 
 FString ATitleScreenPlayerController::DescribePressedKeys() const

@@ -90,6 +90,19 @@ public:
 
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
 
+	/**
+	 * Called by ADeathMetalCatCharacter on a landed SWORD hit specifically (not gun) -- a brief,
+	 * purely cosmetic squash/stretch scale pulse on whichever visual this enemy actually has
+	 * (CachedFlipbookComponent if present, else PlaceholderMesh), selling the weight of a melee
+	 * impact. Layers on top of (doesn't replace) the existing damage-agnostic hit-flash TakeDamage
+	 * already does for every damage source -- this is the sword-specific "powerful hit" addition,
+	 * that generic flash is shared with gun hits and stays as-is. Touches only the visual
+	 * component's own scale, never the actor/capsule -- collision size is completely unaffected, so
+	 * this can never cause a mid-punch clip through geometry or a frame of wrong hitbox size.
+	 * Restarts cleanly if called again while a previous punch is still finishing (no stacking).
+	 */
+	void PlayImpactReaction();
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	float MaxHealth = 100.f;
 
@@ -249,6 +262,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))
 	float HitFlashDuration = 0.15f;
 
+	/** Peak scale multiplier PlayImpactReaction's punch reaches partway through, before easing back to 1.0 (the captured baseline scale, not necessarily literal 1.0/1.0/1.0). Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "1"))
+	float ImpactReactionPeakScale = 1.2f;
+
+	/** Total duration (seconds) of PlayImpactReaction's punch-out-then-settle pulse. Deliberately quick -- a lingering squash reads as slow-motion, not a snappy melee hit. Placeholder value, tune freely. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = "0"))
+	float ImpactReactionDuration = 0.14f;
+
 	/**
 	 * Per-subclass override for a sprite sheet whose art was authored facing -X (left) by
 	 * default rather than +X (right) -- Tick's facing-toward-player logic assumes unmirrored
@@ -393,8 +414,38 @@ private:
 	/** Guards the one-time BaseSpriteRelativeLocation capture -- CachedFlipbookComponent itself resolves lazily in Tick (not BeginPlay), so this can't just check "is CachedFlipbookComponent set yet" the first time, since that's also the frame it resolves. */
 	bool bBaseSpriteLocationCaptured = false;
 
+	/**
+	 * CachedFlipbookComponent's own relative scale magnitude (X already abs()'d, matching how the
+	 * facing-flip block itself treats "magnitude" -- see that block's own comment), captured once in
+	 * the same pass as BaseSpriteRelativeLocation/bBaseSpriteLocationCaptured. This is what
+	 * PlayImpactReaction's punch multiplies against and eases back to -- capturing it rather than
+	 * assuming (1,1,1) means this is correct even for a Blueprint subclass with a non-default authored
+	 * scale.
+	 */
+	FVector BaseFlipbookScale = FVector::OneVector;
+
+	/** Same idea as BaseFlipbookScale, for the PlaceholderMesh-only fallback path (no facing-sign convention to preserve there, so this is just the plain captured scale). Captured lazily, the first time PlayImpactReaction actually needs it. */
+	FVector BasePlaceholderMeshScale = FVector::OneVector;
+	bool bBasePlaceholderMeshScaleCaptured = false;
+
+	/** True from PlayImpactReaction until UpdateImpactReaction's punch-and-settle finishes; UpdateImpactReaction no-ops entirely while false. */
+	bool bIsImpactReacting = false;
+
+	/** Seconds elapsed since the current PlayImpactReaction call; compared against ImpactReactionDuration. */
+	float ImpactReactionElapsed = 0.f;
+
 	/** Called once per Tick (after flipbook selection/CachedFlipbookComponent resolution): sets the flipbook component's relative Z to BaseSpriteRelativeLocation.Z plus whichever of WalkFeetOffsetCorrection/AttackFeetOffsetCorrection/ShootDrawFeetOffsetCorrection/ShootLoopFeetOffsetCorrection matches the currently-showing flipbook (0/Idle if none match), so every state's feet land at the same world-space contact height regardless of which is currently showing. No-ops entirely if CachedFlipbookComponent is null (PlaceholderMesh-only subclasses). */
 	void ApplyFeetOffsetCorrection();
+
+	/**
+	 * Called once per Tick, after the facing-flip block above -- see PlayImpactReaction. No-ops
+	 * entirely while bIsImpactReacting is false. Deliberately runs AFTER facing, not before: facing
+	 * only ever flips Scale.X's SIGN and otherwise preserves whatever magnitude is currently there,
+	 * so running this after guarantees the final per-frame scale is always freshly derived from
+	 * BaseFlipbookScale/BaselinePlaceholderMeshScale * the current punch multiplier, never a stale
+	 * value facing might have re-signed but not re-derived.
+	 */
+	void UpdateImpactReaction(float DeltaSeconds);
 
 	EEnemyShootPhase ShootPhase = EEnemyShootPhase::None;
 

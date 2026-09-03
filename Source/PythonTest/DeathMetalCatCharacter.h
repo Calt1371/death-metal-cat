@@ -406,6 +406,9 @@ protected:
 	/** Spawns an ADamageNumberActor at Location showing DamageAmount color-coded by Tier. */
 	void SpawnDamageNumber(const FVector& Location, float DamageAmount, EDamageTier Tier);
 
+	/** Spawns an AHitImpactEffectActor at Location, a quick radial spark burst tinted by Tier -- called only from OnSwordHitboxBeginOverlap on a landed melee hit, the visible "impact" feedback sword swings were missing. Deliberately sword-only, not shared with the gun's hitscan path (see HandleShootHeld/FireShotTrace) -- a hitscan shot already reads as impactful via its instant hit + damage number, and this project's combat design keeps several sword-exclusive bonuses (GnarlyRank melee multiplier, Uppy's launch) distinct from the gun the same way. */
+	void SpawnHitImpactEffect(const FVector& Location, EDamageTier Tier);
+
 	/**
 	 * Called whenever a sword or gun hit successfully lands (DamageApplied > 0): increments
 	 * GnarlyHitCount and advances GnarlyRank across any thresholds just crossed. Named

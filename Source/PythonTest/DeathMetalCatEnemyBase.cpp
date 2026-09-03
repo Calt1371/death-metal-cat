@@ -206,6 +206,11 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 		JitteredLocation.Y += static_cast<float>(Hashed % 2000) * 0.001f - 1.0f; // [-1.0, 1.0] uu
 		CachedFlipbookComponent->SetRelativeLocation(JitteredLocation);
 		BaseSpriteRelativeLocation = JitteredLocation;
+
+		// Captured here too (same one-time pass) -- see BaseFlipbookScale's own comment for why
+		// PlayImpactReaction needs this rather than assuming (1,1,1).
+		const FVector InitialScale = CachedFlipbookComponent->GetRelativeScale3D();
+		BaseFlipbookScale = FVector(FMath::Abs(InitialScale.X), InitialScale.Y, InitialScale.Z);
 	}
 
 	const FVector MyLocation = GetActorLocation();
@@ -330,6 +335,10 @@ void ADeathMetalCatEnemyBase::Tick(float DeltaSeconds)
 	// that block -- it re-reads CachedFlipbookComponent->GetFlipbook() fresh each call rather than
 	// relying on being invoked right after whatever set it.
 	ApplyFeetOffsetCorrection();
+
+	// Deliberately called last, after the facing-flip block above -- see this function's own header
+	// comment for why that ordering matters.
+	UpdateImpactReaction(DeltaSeconds);
 }
 
 void ADeathMetalCatEnemyBase::ApplyFeetOffsetCorrection()
@@ -365,6 +374,66 @@ void ADeathMetalCatEnemyBase::ApplyFeetOffsetCorrection()
 	{
 		Loc.Z = TargetZ;
 		CachedFlipbookComponent->SetRelativeLocation(Loc);
+	}
+}
+
+void ADeathMetalCatEnemyBase::PlayImpactReaction()
+{
+	// Restarts cleanly (no stacking) even if a previous punch is still finishing -- combo hits land
+	// faster than ImpactReactionDuration, so this is the common case, not an edge case.
+	bIsImpactReacting = true;
+	ImpactReactionElapsed = 0.f;
+
+	if (!CachedFlipbookComponent && !bBasePlaceholderMeshScaleCaptured && PlaceholderMesh)
+	{
+		BasePlaceholderMeshScale = PlaceholderMesh->GetRelativeScale3D();
+		bBasePlaceholderMeshScaleCaptured = true;
+	}
+}
+
+void ADeathMetalCatEnemyBase::UpdateImpactReaction(float DeltaSeconds)
+{
+	if (!bIsImpactReacting)
+	{
+		return;
+	}
+
+	ImpactReactionElapsed += DeltaSeconds;
+	const float Alpha = (ImpactReactionDuration > 0.f) ? FMath::Clamp(ImpactReactionElapsed / ImpactReactionDuration, 0.f, 1.f) : 1.f;
+
+	// Punch out over the first third, then ease back to baseline over the rest -- the growth needs
+	// to be visible, not instant, or it just reads as a pop rather than a punch.
+	constexpr float PunchOutFraction = 0.35f;
+	float Multiplier;
+	if (Alpha < PunchOutFraction)
+	{
+		Multiplier = FMath::Lerp(1.f, ImpactReactionPeakScale, Alpha / PunchOutFraction);
+	}
+	else
+	{
+		Multiplier = FMath::Lerp(ImpactReactionPeakScale, 1.f, (Alpha - PunchOutFraction) / (1.f - PunchOutFraction));
+	}
+
+	if (CachedFlipbookComponent)
+	{
+		// Re-derived fresh from BaseFlipbookScale every tick (never from whatever's currently in
+		// Scale3D) -- see this function's declaration comment for why that's required to compose
+		// correctly with the facing-flip block's own sign handling.
+		const FVector CurrentScale = CachedFlipbookComponent->GetRelativeScale3D();
+		const float CurrentSign = (CurrentScale.X < 0.f) ? -1.f : 1.f;
+		CachedFlipbookComponent->SetRelativeScale3D(FVector(
+			CurrentSign * BaseFlipbookScale.X * Multiplier,
+			BaseFlipbookScale.Y * Multiplier,
+			BaseFlipbookScale.Z * Multiplier));
+	}
+	else if (PlaceholderMesh)
+	{
+		PlaceholderMesh->SetRelativeScale3D(BasePlaceholderMeshScale * Multiplier);
+	}
+
+	if (Alpha >= 1.f)
+	{
+		bIsImpactReacting = false;
 	}
 }
 

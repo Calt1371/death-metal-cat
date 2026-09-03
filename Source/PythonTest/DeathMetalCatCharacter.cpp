@@ -20,6 +20,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
 #include "DamageNumberActor.h"
+#include "HitImpactEffectActor.h"
 #include "GnarlyRankHUDWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "QuipLibrary.h"
@@ -1113,6 +1114,21 @@ void ADeathMetalCatCharacter::SpawnDamageNumber(const FVector& Location, float D
 	}
 }
 
+void ADeathMetalCatCharacter::SpawnHitImpactEffect(const FVector& Location, EDamageTier Tier)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	AHitImpactEffectActor* Impact = World->SpawnActor<AHitImpactEffectActor>(AHitImpactEffectActor::StaticClass(), FTransform(Location));
+	if (Impact)
+	{
+		Impact->InitHitImpact(Tier);
+	}
+}
+
 void ADeathMetalCatCharacter::RegisterGnarlyHit()
 {
 	// Normally a flat +1; GnarlyAmp pickups (ItemGnarlyAmpBonus) add extra points per hit so rank
@@ -1932,6 +1948,18 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 	if (DamageApplied > 0.f)
 	{
 		SpawnDamageNumber(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
+
+		// Sword-specific "powerful hit" feedback -- a spark burst at the point of contact plus a
+		// quick squash reaction on the enemy itself, distinct from (and in addition to) the generic
+		// damage-agnostic hit-flash ADeathMetalCatEnemyBase::TakeDamage already does for every
+		// damage source including the gun. See SpawnHitImpactEffect/PlayImpactReaction's own
+		// comments for why this is melee-only.
+		SpawnHitImpactEffect(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), Tier);
+		if (ADeathMetalCatEnemyBase* HitEnemy = Cast<ADeathMetalCatEnemyBase>(OtherActor))
+		{
+			HitEnemy->PlayImpactReaction();
+		}
+
 		RegisterGnarlyHit();
 		AddRage(DamageApplied, RageGainPerDamageDealt);
 

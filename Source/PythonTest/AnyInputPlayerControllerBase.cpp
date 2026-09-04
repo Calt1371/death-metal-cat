@@ -3,6 +3,13 @@
 #include "Components/InputComponent.h"
 #include "GameFramework/InputSettings.h"
 
+namespace
+{
+	// How long after this screen appears before it starts accepting "any input" presses -- see
+	// InputArmTime's comment in the header for why this exists.
+	constexpr float InputArmDelay = 0.35f;
+}
+
 AAnyInputPlayerControllerBase::AAnyInputPlayerControllerBase()
 {
 	bShowMouseCursor = false;
@@ -16,6 +23,11 @@ void AAnyInputPlayerControllerBase::BeginPlay()
 	// These screens have no focusable widget, so game-only input keeps every key routed here rather
 	// than letting Slate swallow it.
 	SetInputMode(FInputModeGameOnly());
+
+	if (const UWorld* World = GetWorld())
+	{
+		InputArmTime = World->GetTimeSeconds() + InputArmDelay;
+	}
 }
 
 void AAnyInputPlayerControllerBase::SetupInputComponent()
@@ -82,6 +94,16 @@ FString AAnyInputPlayerControllerBase::DescribePressedKeys() const
 	return Pressed.Num() > 0 ? FString::Join(Pressed, TEXT(", ")) : TEXT("<already released>");
 }
 
+void AAnyInputPlayerControllerBase::Rearm()
+{
+	bInputConsumed = false;
+
+	if (const UWorld* World = GetWorld())
+	{
+		InputArmTime = World->GetTimeSeconds() + InputArmDelay;
+	}
+}
+
 void AAnyInputPlayerControllerBase::HandleAnyInput()
 {
 	// Every bound key routes here, and several can fire in the same frame (a key plus AnyKey, or a
@@ -90,6 +112,17 @@ void AAnyInputPlayerControllerBase::HandleAnyInput()
 	{
 		return;
 	}
+
+	if (const UWorld* World = GetWorld())
+	{
+		if (World->GetTimeSeconds() < InputArmTime)
+		{
+			// Still within the grace window -- almost certainly the previous screen's dismissal
+			// press leaking across the level transition, not a genuine new press. See InputArmTime.
+			return;
+		}
+	}
+
 	bInputConsumed = true;
 
 	UE_LOG(LogTemp, Log, TEXT("%s Input detected (%s)."), GetLogTag(), *DescribePressedKeys());

@@ -66,6 +66,23 @@ protected:
 	/** Text for the pulsing hint line (e.g. "PRESS ANY BUTTON TO START"). Return an empty string (the default) for no hint line at all. */
 	virtual FString GetHintTextString() const { return FString(); }
 
+	/**
+	 * Which native media player backend this screen's MediaSource should be forced onto -- "WmfMedia"
+	 * or "ElectraPlayer" (the two player factory names registered in this project; see
+	 * Initialize()'s comment for how this gets applied). Deliberately NOT left as NAME_None/"auto"
+	 * for either screen: confirmed live (2026-09-04) that once the Electra plugin is enabled at all,
+	 * "auto" resolves to Electra even for a screen that never asked for it, silently overriding what
+	 * used to auto-resolve to WmfMedia. Every screen must say explicitly which one it wants.
+	 *
+	 * WmfMedia can't actually decode a frame for whichever UMediaPlayer opens second in this process
+	 * (confirmed live 2026-09-04) -- Electra fixes that, but Electra's own H.264 parser rejects the
+	 * title screen's specific encoding ("Invalid value for max_dec_frame_buffering in SPS"). So the
+	 * title screen (first, and already reliable under WmfMedia) stays on WmfMedia, and only the intro
+	 * cinematic (second, the one that needs the fix) switches to Electra -- see each subclass's
+	 * override.
+	 */
+	virtual FName GetDesiredMediaPlayerName() const PURE_VIRTUAL(UFullscreenVideoWidgetBase::GetDesiredMediaPlayerName, return NAME_None;);
+
 	/** True from the first BeginFadeToBlack call onward -- lets a subclass's own per-tick logic (e.g. the title screen's loop) stop itself once the hand-off has begun. */
 	bool IsFadeTriggered() const { return bFadeTriggered; }
 
@@ -85,6 +102,22 @@ protected:
 	/** Safety/completion hook for UMediaPlayer::OnEndReached. Default no-op -- the title screen uses this as a safety net for its freeze margin, the cinematic uses it to detect natural (unskipped) completion. */
 	UFUNCTION()
 	virtual void HandleMediaEndReached();
+
+private:
+	/**
+	 * Bound to UMediaPlayer::OnMediaOpened/OnMediaOpenFailed -- these fire asynchronously once the
+	 * open this widget requested in NativeConstruct actually finishes (or fails), unlike
+	 * OpenSource()'s own return value, which only means the request was accepted, not that it
+	 * completed. Pure diagnostic logging, added to get direct evidence of what OpenSource's outcome
+	 * actually was rather than inferring it from GetDuration()/IsReady() afterwards.
+	 */
+	UFUNCTION()
+	void HandleMediaOpened(FString OpenedUrl);
+
+	UFUNCTION()
+	void HandleMediaOpenFailed(FString FailedUrl);
+
+protected:
 
 	/** Full-screen black behind the letterboxed video, so the pillar/letterbox bars are black rather than showing whatever is behind the widget. */
 	UPROPERTY()
@@ -128,6 +161,11 @@ private:
 
 	/** Per-tick opacity ramp for BlackOverlayImage -- see BeginFadeToBlack. No-ops while bFadeActive is false. */
 	void UpdateFadeToBlack();
+
+	/** Periodically logs MediaPlayer's actual playback state (see the .cpp) so a failed-to-render video's cause shows up in the log instead of just as a black screen. Temporary diagnostic. */
+	void LogMediaDiagnostics(float DeltaTime);
+
+	float DiagLogAccumulator = 0.f;
 
 	bool bVideoDimensionsApplied = false;
 

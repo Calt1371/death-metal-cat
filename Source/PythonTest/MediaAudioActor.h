@@ -29,6 +29,9 @@ public:
 	/** Points this actor's sound component at Player, so whatever audio track that player decodes actually gets heard, and starts it. Safe to call again with a different player (or the same one) at any time. */
 	void SetMediaPlayer(UMediaPlayer* Player);
 
+	/** Explicitly stops the sound component before teardown -- see UFullscreenVideoWidgetBase::BeginFadeToBlack for why this can't just be left to Destroy(). */
+	void Stop();
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Media Audio")
 	TObjectPtr<UMediaSoundComponent> SoundComponent;

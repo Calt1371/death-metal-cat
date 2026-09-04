@@ -9,6 +9,7 @@
 #include "Engine/Texture2D.h"
 #include "MediaPlayer.h"
 #include "MediaSource.h"
+#include "BaseMediaSource.h"
 #include "MediaTexture.h"
 #include "MediaAudioActor.h"
 
@@ -148,6 +149,17 @@ bool UFullscreenVideoWidgetBase::Initialize()
 		UE_LOG(LogTemp, Error, TEXT("[VIDEO] Failed to load media source: %s"), GetMediaSourceAssetPath());
 	}
 
+#if WITH_EDITORONLY_DATA
+	// See GetDesiredMediaPlayerName's comment for the full story -- every screen explicitly names its
+	// backend rather than leaving either on "auto". This only applies to editor-class builds
+	// (including a Development Editor's -game launch, which is what every test so far has used) -- a
+	// packaged build would need the equivalent runtime PlayerName set instead if this pans out.
+	if (UBaseMediaSource* BaseSource = Cast<UBaseMediaSource>(MediaSource))
+	{
+		BaseSource->PlatformPlayerNames.Add(TEXT("Windows"), GetDesiredMediaPlayerName());
+	}
+#endif
+
 	return true;
 }
 
@@ -173,7 +185,16 @@ void UFullscreenVideoWidgetBase::NativeConstruct()
 	MediaPlayer->SetLooping(false);
 	MediaPlayer->PlayOnOpen = true;
 
+	// Audio must come ONLY from AudioActor's MediaSoundComponent below, never from the player's own
+	// OS-mixer output -- Epic's own Media Framework forum documents NativeAudioOut and a
+	// MediaSoundComponent both active at once as a known cause of exactly this class of bug (the video
+	// frame freezing/staying black while the player otherwise reports healthy). Whatever an asset
+	// happened to save this as, force it off here rather than trusting per-asset state.
+	MediaPlayer->NativeAudioOut = false;
+
 	MediaPlayer->OnEndReached.AddDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaEndReached);
+	MediaPlayer->OnMediaOpened.AddDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaOpened);
+	MediaPlayer->OnMediaOpenFailed.AddDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaOpenFailed);
 
 	// A UUserWidget can't own an ActorComponent itself, so MediaPlayer's audio track is routed
 	// through a small dedicated actor instead -- see AMediaAudioActor's own comment. Only spawned
@@ -191,7 +212,15 @@ void UFullscreenVideoWidgetBase::NativeConstruct()
 	bVideoDimensionsApplied = false;
 	bAudioStarted = false;
 
-	if (!MediaPlayer->OpenSource(MediaSource))
+	// Logged on BOTH branches, not just failure -- the earlier version of this only logged failure,
+	// which left "was OpenSource even called, and what did it actually return" resting on inference
+	// (GetDuration()/IsReady() reporting sane-looking values afterwards) rather than direct evidence.
+	const bool bOpenedOk = MediaPlayer->OpenSource(MediaSource);
+	if (bOpenedOk)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[VIDEO] OpenSource(%s) returned true for player %s."), *MediaSource->GetName(), *MediaPlayer->GetName());
+	}
+	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("[VIDEO] OpenSource failed for %s -- is the .mp4 present at Content/Movies and is a media player backend (WmfMedia) enabled?"), *MediaSource->GetName());
 	}
@@ -202,11 +231,14 @@ void UFullscreenVideoWidgetBase::NativeDestruct()
 	if (MediaPlayer)
 	{
 		MediaPlayer->OnEndReached.RemoveDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaEndReached);
+		MediaPlayer->OnMediaOpened.RemoveDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaOpened);
+		MediaPlayer->OnMediaOpenFailed.RemoveDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaOpenFailed);
 		MediaPlayer->Close();
 	}
 
 	if (AudioActor)
 	{
+		AudioActor->Stop();
 		AudioActor->Destroy();
 		AudioActor = nullptr;
 	}
@@ -222,6 +254,40 @@ void UFullscreenVideoWidgetBase::NativeTick(const FGeometry& MyGeometry, float I
 	StartAudioOnceReady();
 	UpdateHintPulse(InDeltaTime);
 	UpdateFadeToBlack();
+	LogMediaDiagnostics(InDeltaTime);
+}
+
+void UFullscreenVideoWidgetBase::LogMediaDiagnostics(float DeltaTime)
+{
+	if (bFadeTriggered || !MediaPlayer)
+	{
+		return;
+	}
+
+	DiagLogAccumulator += DeltaTime;
+	if (DiagLogAccumulator < 1.f)
+	{
+		return;
+	}
+	DiagLogAccumulator = 0.f;
+
+	const int32 SurfaceW = MediaTexture ? FMath::RoundToInt(MediaTexture->GetSurfaceWidth()) : -1;
+	const int32 SurfaceH = MediaTexture ? FMath::RoundToInt(MediaTexture->GetSurfaceHeight()) : -1;
+
+	UE_LOG(LogTemp, Log,
+		TEXT("[VIDEO] Diagnostics for %s: IsPlaying=%d IsPaused=%d IsPreparing=%d IsBuffering=%d IsConnecting=%d IsClosed=%d HasError=%d IsReady=%d Duration=%.3f Time=%.3f TextureSurface=%dx%d"),
+		*MediaPlayer->GetName(),
+		MediaPlayer->IsPlaying() ? 1 : 0,
+		MediaPlayer->IsPaused() ? 1 : 0,
+		MediaPlayer->IsPreparing() ? 1 : 0,
+		MediaPlayer->IsBuffering() ? 1 : 0,
+		MediaPlayer->IsConnecting() ? 1 : 0,
+		MediaPlayer->IsClosed() ? 1 : 0,
+		MediaPlayer->HasError() ? 1 : 0,
+		MediaPlayer->IsReady() ? 1 : 0,
+		MediaPlayer->GetDuration().GetTotalSeconds(),
+		MediaPlayer->GetTime().GetTotalSeconds(),
+		SurfaceW, SurfaceH);
 }
 
 void UFullscreenVideoWidgetBase::StartAudioOnceReady()
@@ -284,6 +350,16 @@ void UFullscreenVideoWidgetBase::ApplyVideoDimensions()
 	UE_LOG(LogTemp, Log, TEXT("[VIDEO] Video dimensions resolved: %dx%d"), Dimensions.X, Dimensions.Y);
 }
 
+void UFullscreenVideoWidgetBase::HandleMediaOpened(FString OpenedUrl)
+{
+	UE_LOG(LogTemp, Log, TEXT("[VIDEO] OnMediaOpened fired for %s -- the open genuinely completed, not just accepted."), *OpenedUrl);
+}
+
+void UFullscreenVideoWidgetBase::HandleMediaOpenFailed(FString FailedUrl)
+{
+	UE_LOG(LogTemp, Error, TEXT("[VIDEO] OnMediaOpenFailed fired for %s."), *FailedUrl);
+}
+
 void UFullscreenVideoWidgetBase::HandleMediaEndReached()
 {
 	// No-op by default -- see subclass overrides (UTitleScreenWidget's freeze safety net,
@@ -331,6 +407,26 @@ void UFullscreenVideoWidgetBase::BeginFadeToBlack(float Duration)
 		BlackOverlayImage->SetVisibility(ESlateVisibility::HitTestInvisible);
 		BlackOverlayImage->SetRenderOpacity(0.f);
 	}
+
+	// Both stopped here, at the START of the fade, rather than only once it completes (video) or only
+	// in NativeDestruct (audio) -- UMediaPlayer::Close() only REQUESTS a shutdown; the underlying WMF
+	// session actually tears down over subsequent ticks, not instantly, and the same is true of the
+	// MediaSoundComponent's own audio render thread teardown. The GameMode that called this
+	// (ATitleScreenGameMode/AIntroCinematicGameMode) opens the next level on its own timer of this same
+	// Duration, so tearing down only once the fade finishes (or only in NativeDestruct, whenever the
+	// engine gets around to it during the transition) left this player's still-unwinding session racing
+	// the very next screen's OpenSource() on essentially the same frame. Stopping the audio component
+	// FIRST, then closing the player, gives both the full fade-plus-level-load window to actually
+	// release before anything tries to reopen a source on the way in.
+	if (AudioActor)
+	{
+		AudioActor->Stop();
+	}
+
+	if (MediaPlayer)
+	{
+		MediaPlayer->Close();
+	}
 }
 
 void UFullscreenVideoWidgetBase::UpdateFadeToBlack()
@@ -353,11 +449,5 @@ void UFullscreenVideoWidgetBase::UpdateFadeToBlack()
 	if (Alpha >= 1.f)
 	{
 		bFadeActive = false;
-
-		// Fully black now, so nothing is left to show -- stop decoding.
-		if (MediaPlayer)
-		{
-			MediaPlayer->Close();
-		}
 	}
 }

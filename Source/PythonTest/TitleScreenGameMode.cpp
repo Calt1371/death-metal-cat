@@ -1,7 +1,8 @@
 #include "TitleScreenGameMode.h"
 
+#include "AnyInputPlayerControllerBase.h"
 #include "TitleScreenPlayerController.h"
-#include "TitleScreenWidget.h"
+#include "TitleIntroCombinedWidget.h"
 #include "DMCGameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
@@ -30,52 +31,73 @@ void ATitleScreenGameMode::BeginPlay()
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
 	if (!PC)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[TITLE] No player controller at BeginPlay -- title widget not created."));
+		UE_LOG(LogTemp, Error, TEXT("[TITLE] No player controller at BeginPlay -- widget not created."));
 		return;
 	}
 
-	TitleWidget = CreateWidget<UTitleScreenWidget>(PC, UTitleScreenWidget::StaticClass());
-	if (!TitleWidget)
+	CombinedWidget = CreateWidget<UTitleIntroCombinedWidget>(PC, UTitleIntroCombinedWidget::StaticClass());
+	if (!CombinedWidget)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[TITLE] Failed to create the title screen widget."));
+		UE_LOG(LogTemp, Error, TEXT("[TITLE] Failed to create the title/intro widget."));
 		return;
 	}
 
-	TitleWidget->AddToViewport();
+	CombinedWidget->SetOnReadyForGameplayDelegate(FSimpleDelegate::CreateUObject(this, &ATitleScreenGameMode::HandleReadyForGameplay));
+	CombinedWidget->AddToViewport();
+
 	UE_LOG(LogTemp, Log, TEXT("[TITLE] Title screen up -- video cycle running, waiting for any input."));
 }
 
-void ATitleScreenGameMode::HandleStartPressed()
+void ATitleScreenGameMode::HandleAnyInput()
 {
-	if (bStartTriggered)
+	if (CombinedWidget)
+	{
+		CombinedWidget->NotifyAnyInput();
+	}
+
+	// Re-arms the SAME controller instance for the NEXT "any input" press -- this one continuous
+	// screen can legitimately receive it twice (leave the title loop, then skip the intro portion),
+	// unlike the one-shot-per-screen shape AAnyInputPlayerControllerBase was originally built for.
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+	{
+		if (AAnyInputPlayerControllerBase* AnyInputPC = Cast<AAnyInputPlayerControllerBase>(PC))
+		{
+			AnyInputPC->Rearm();
+		}
+	}
+}
+
+void ATitleScreenGameMode::HandleReadyForGameplay()
+{
+	if (bReadyForGameplayTriggered)
 	{
 		return;
 	}
-	bStartTriggered = true;
+	bReadyForGameplayTriggered = true;
 
-	if (TitleWidget)
+	if (CombinedWidget)
 	{
-		TitleWidget->BeginFadeToBlack(StartFadeDuration);
+		CombinedWidget->BeginFadeToBlack(EndFadeDuration);
 	}
 
 	GetWorldTimerManager().SetTimer(
-		StartTransitionTimer, this, &ATitleScreenGameMode::FinishStartTransition, StartFadeDuration, false);
+		GameplayTransitionTimer, this, &ATitleScreenGameMode::FinishToGameplay, EndFadeDuration, false);
 }
 
-void ATitleScreenGameMode::FinishStartTransition()
+void ATitleScreenGameMode::FinishToGameplay()
 {
-	if (IntroCinematicMap.IsNull())
+	if (GameplayMap.IsNull())
 	{
-		// Falls back to holding on black if BP_TitleScreenGameMode's IntroCinematicMap somehow ended
-		// up unset -- AgentScripts/ue_create_title_screen_assets.py points it at L_IntroCinematic,
+		// Falls back to holding on black if BP_TitleScreenGameMode's GameplayMap somehow ended up
+		// unset -- AgentScripts/ue_create_intro_cinematic_assets.py points it at L_ControllerTestRange,
 		// but this keeps a bad/cleared reference from hard-failing instead of just logging.
 		UE_LOG(LogTemp, Warning,
-			TEXT("[TITLE] >>> START TRIGGERED -- would proceed to the intro cinematic here. ")
-			TEXT("No IntroCinematicMap set, holding on black. Set it on BP_TitleScreenGameMode once the cinematic map exists."));
+			TEXT("[INTRO] >>> READY FOR GAMEPLAY -- would proceed here. ")
+			TEXT("No GameplayMap set, holding on black. Set it on BP_TitleScreenGameMode."));
 		return;
 	}
 
-	const FString PackageName = IntroCinematicMap.ToSoftObjectPath().GetLongPackageName();
-	UE_LOG(LogTemp, Log, TEXT("[TITLE] Opening intro cinematic map: %s"), *PackageName);
+	const FString PackageName = GameplayMap.ToSoftObjectPath().GetLongPackageName();
+	UE_LOG(LogTemp, Log, TEXT("[INTRO] Opening gameplay map: %s"), *PackageName);
 	UGameplayStatics::OpenLevel(this, FName(*PackageName));
 }

@@ -40,7 +40,7 @@ void AIntroCinematicGameMode::BeginPlay()
 		return;
 	}
 
-	CinematicWidget->SetOwningGameMode(this);
+	CinematicWidget->SetOnCinematicEndDelegate(FSimpleDelegate::CreateUObject(this, &AIntroCinematicGameMode::HandleCinematicEnd));
 	CinematicWidget->AddToViewport();
 	UE_LOG(LogTemp, Log, TEXT("[INTRO] Intro cinematic up -- playing, waiting for any input to skip."));
 }

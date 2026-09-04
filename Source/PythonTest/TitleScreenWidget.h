@@ -36,6 +36,7 @@ protected:
 	virtual const TCHAR* GetMediaSourceAssetPath() const override;
 	virtual const TCHAR* GetMediaTextureAssetPath() const override;
 	virtual FString GetHintTextString() const override;
+	virtual FName GetDesiredMediaPlayerName() const override { return FName(TEXT("WmfMedia")); }
 	virtual void HandleMediaEndReached() override;
 
 private:

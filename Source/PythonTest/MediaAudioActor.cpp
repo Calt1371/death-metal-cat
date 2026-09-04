@@ -21,3 +21,12 @@ void AMediaAudioActor::SetMediaPlayer(UMediaPlayer* Player)
 		SoundComponent->Start();
 	}
 }
+
+void AMediaAudioActor::Stop()
+{
+	if (SoundComponent)
+	{
+		SoundComponent->Stop();
+		SoundComponent->SetMediaPlayer(nullptr);
+	}
+}

@@ -28,6 +28,15 @@ class PYTHONTEST_API AAnyInputPlayerControllerBase : public APlayerController
 public:
 	AAnyInputPlayerControllerBase();
 
+	/**
+	 * Resets the "already consumed" latch and restarts the leaked-press grace window (see
+	 * InputArmTime), so this SAME controller instance can catch a second, later "any input" press.
+	 * Needed because ATitleScreenGameMode now hands off from the title screen to the intro cinematic
+	 * in-place, in the same level (see that class's comment for why), rather than via a level
+	 * transition that would hand the job to a fresh controller instance the way it used to.
+	 */
+	void Rearm();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -47,4 +56,15 @@ private:
 
 	/** Latched on the first accepted press, so a mash of several buttons in the same frame still only fires once. */
 	bool bInputConsumed = false;
+
+	/**
+	 * World time (seconds) before which HandleAnyInput ignores every press -- see BeginPlay. Guards
+	 * against the key that dismissed the PREVIOUS screen (e.g. title) still being physically down, or
+	 * its down-event still in flight, at the exact moment THIS screen's InputComponent binds during a
+	 * level transition -- without this, that same press can immediately re-trigger here too, skipping
+	 * the screen before the player ever sees it. Confirmed live (2026-09-03): pressing Enter to leave
+	 * the title screen produced a second, unwanted "Input detected" on the intro cinematic's own
+	 * controller ~1.3s later, skipping straight to gameplay.
+	 */
+	float InputArmTime = 0.f;
 };

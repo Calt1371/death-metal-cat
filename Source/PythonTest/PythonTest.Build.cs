@@ -20,7 +20,10 @@ public class PythonTest : ModuleRules
 			// Title screen video playback (UMediaPlayer/UMediaTexture/UMediaSource). MediaAssets is a
 			// built-in engine module, not a plugin -- the plugin side of Media Framework is only the
 			// per-platform playback backend (WmfMedia on Win64), which the .uproject pins explicitly.
-			"MediaAssets"
+			"MediaAssets",
+			// UMediaSoundComponent (AMediaAudioActor) derives from USynthComponent -- its Start()/
+			// Stop() etc. are implemented in this module, not MediaAssets.
+			"AudioMixer"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

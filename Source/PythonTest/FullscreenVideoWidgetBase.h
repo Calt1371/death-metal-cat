@@ -11,13 +11,15 @@ class UTextBlock;
 class UMediaPlayer;
 class UMediaSource;
 class UMediaTexture;
+class AMediaAudioActor;
 
 /**
  * Shared scaffolding for a full-screen video-backed UMG screen: black backdrop + letterboxed video
- * image + an optional pulsing hint line + a full-screen black fade-out, all built once here so the
- * two screens in this game that play an .mp4 through Media Framework -- the title screen and the
- * intro cinematic -- don't each reimplement the same UMediaPlayer wiring, aspect-ratio handling,
- * and fade-to-black.
+ * image + an optional pulsing hint line + a full-screen black fade-out + the video's own audio (via
+ * a spawned AMediaAudioActor -- a UUserWidget can't own an ActorComponent itself, see that class's
+ * comment), all built once here so the two screens in this game that play an .mp4 through Media
+ * Framework -- the title screen and the intro cinematic -- don't each reimplement the same
+ * UMediaPlayer wiring, aspect-ratio handling, audio, and fade-to-black.
  *
  * Built entirely in Initialize() (WidgetTree->ConstructWidget), not NativeConstruct -- same
  * approach and reason as UGnarlyRankHUDWidget: Initialize() runs before UMG builds the underlying
@@ -112,6 +114,10 @@ protected:
 	/** The render target MediaPlayer decodes into, and the brush resource VideoImage draws. */
 	UPROPERTY()
 	TObjectPtr<UMediaTexture> MediaTexture;
+
+	/** Hosts the UMediaSoundComponent that actually outputs MediaPlayer's audio track -- see AMediaAudioActor's own comment for why this needs a separate actor. Spawned in NativeConstruct, destroyed alongside everything else in NativeDestruct. */
+	UPROPERTY()
+	TObjectPtr<AMediaAudioActor> AudioActor;
 
 private:
 	/** Gentle sine pulse on the hint line's opacity. Deliberately never reaches zero -- the hint is meant to be readable at all times, the pulse only marks it as interactive. No-ops once IsFadeTriggered(). */

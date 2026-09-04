@@ -10,6 +10,7 @@
 #include "MediaPlayer.h"
 #include "MediaSource.h"
 #include "MediaTexture.h"
+#include "MediaAudioActor.h"
 
 namespace
 {
@@ -174,6 +175,23 @@ void UFullscreenVideoWidgetBase::NativeConstruct()
 
 	MediaPlayer->OnEndReached.AddDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaEndReached);
 
+	// A UUserWidget can't own an ActorComponent itself, so MediaPlayer's audio track (if it has
+	// one -- the title screen's own clip currently doesn't, the cinematic's does) is routed through
+	// a small dedicated actor instead -- see AMediaAudioActor's own comment. Guarded in case
+	// NativeConstruct somehow runs more than once for the same widget instance, same defensive
+	// pattern as the rest of this class.
+	if (!AudioActor)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			AudioActor = World->SpawnActor<AMediaAudioActor>();
+		}
+	}
+	if (AudioActor)
+	{
+		AudioActor->SetMediaPlayer(MediaPlayer);
+	}
+
 	bVideoDimensionsApplied = false;
 
 	if (!MediaPlayer->OpenSource(MediaSource))
@@ -188,6 +206,12 @@ void UFullscreenVideoWidgetBase::NativeDestruct()
 	{
 		MediaPlayer->OnEndReached.RemoveDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaEndReached);
 		MediaPlayer->Close();
+	}
+
+	if (AudioActor)
+	{
+		AudioActor->Destroy();
+		AudioActor = nullptr;
 	}
 
 	Super::NativeDestruct();

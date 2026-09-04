@@ -15,14 +15,20 @@ namespace
 	// Where the title portion ends and the intro portion begins in the merged file. The original
 	// title clip is 5.041667s; the merge re-encoded both clips to a constant 30fps, which lands the
 	// actual cut somewhere between frame 151 (5.0333s) and frame 152 (5.0667s) -- 5.05s sits safely
-	// in that gap. Precision beyond this doesn't matter: FreezeMarginSeconds below already exists to
-	// absorb exactly this kind of slack.
+	// in that gap. Precision beyond this doesn't matter: CombinedFreezeMarginSeconds below already
+	// exists to absorb exactly this kind of slack.
 	constexpr float TitleSegmentDuration = 5.05f;
 
-	// Same shape as UTitleScreenWidget's original loop constants.
-	constexpr float FreezeHoldSeconds = 20.f;
-	constexpr float FreezeMarginSeconds = 0.25f;
-	constexpr float RestartTimeoutSeconds = 2.f;
+	// Same shape as UTitleScreenWidget's original loop constants, just renamed -- UE compiles the
+	// module as a unity build (every .cpp concatenated into one translation unit for a full/fresh
+	// build, though an adaptive/incremental build can keep files like this one and
+	// TitleScreenWidget.cpp separate and hide the collision), so identically-named anonymous-
+	// namespace constants in different files collide. UTitleScreenWidget is orphaned but still
+	// compiled (see its own class comment), so this file's copies need distinct names rather than
+	// deleting the other side.
+	constexpr float CombinedFreezeHoldSeconds = 20.f;
+	constexpr float CombinedFreezeMarginSeconds = 0.25f;
+	constexpr float CombinedRestartTimeoutSeconds = 2.f;
 }
 
 const TCHAR* UTitleIntroCombinedWidget::GetMediaPlayerAssetPath() const
@@ -85,7 +91,7 @@ void UTitleIntroCombinedWidget::UpdateLoopCycle()
 
 	case ELoopState::Playing:
 	{
-		const FTimespan FreezeAt = FTimespan::FromSeconds(TitleSegmentDuration - FreezeMarginSeconds);
+		const FTimespan FreezeAt = FTimespan::FromSeconds(TitleSegmentDuration - CombinedFreezeMarginSeconds);
 		if (MediaPlayer->GetTime() >= FreezeAt)
 		{
 			// Pause rather than stop -- keeps the player open and seekable, and keeps the last
@@ -95,14 +101,14 @@ void UTitleIntroCombinedWidget::UpdateLoopCycle()
 			LoopState = ELoopState::Frozen;
 
 			UE_LOG(LogTemp, Log, TEXT("[TITLE] Froze on final title frame at %.3fs -- holding %.0fs."),
-				MediaPlayer->GetTime().GetTotalSeconds(), FreezeHoldSeconds);
+				MediaPlayer->GetTime().GetTotalSeconds(), CombinedFreezeHoldSeconds);
 		}
 		break;
 	}
 
 	case ELoopState::Frozen:
 	{
-		if (World->GetTimeSeconds() - FreezeStartTime >= FreezeHoldSeconds)
+		if (World->GetTimeSeconds() - FreezeStartTime >= CombinedFreezeHoldSeconds)
 		{
 			RestartLoop();
 		}
@@ -111,16 +117,16 @@ void UTitleIntroCombinedWidget::UpdateLoopCycle()
 
 	case ELoopState::Restarting:
 	{
-		const FTimespan FreezeAt = FTimespan::FromSeconds(TitleSegmentDuration - FreezeMarginSeconds);
+		const FTimespan FreezeAt = FTimespan::FromSeconds(TitleSegmentDuration - CombinedFreezeMarginSeconds);
 		if (MediaPlayer->GetTime() < FreezeAt)
 		{
 			LoopState = ELoopState::Playing;
 			break;
 		}
 
-		if (World->GetTimeSeconds() - RestartRequestTime >= RestartTimeoutSeconds)
+		if (World->GetTimeSeconds() - RestartRequestTime >= CombinedRestartTimeoutSeconds)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[TITLE] Seek did not rewind within %.0fs -- reopening the source."), RestartTimeoutSeconds);
+			UE_LOG(LogTemp, Warning, TEXT("[TITLE] Seek did not rewind within %.0fs -- reopening the source."), CombinedRestartTimeoutSeconds);
 			if (MediaSource)
 			{
 				MediaPlayer->OpenSource(MediaSource);

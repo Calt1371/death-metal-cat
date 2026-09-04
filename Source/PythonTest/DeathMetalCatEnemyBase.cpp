@@ -464,6 +464,8 @@ float ADeathMetalCatEnemyBase::TakeDamage(float DamageAmount, FDamageEvent const
 		GetWorldTimerManager().SetTimer(HitFlashTimerHandle, this, &ADeathMetalCatEnemyBase::ClearHitFlash, HitFlashDuration, false);
 	}
 
+	UGameplayStatics::PlaySoundAtLocation(this, EnemyHitSound, GetActorLocation());
+
 	if (Health <= 0.f)
 	{
 		bIsDead = true;
@@ -505,6 +507,8 @@ void ADeathMetalCatEnemyBase::HandleDeath()
 	// here anymore -- it blinks first via TickDeathBlink, then hides for good once the blink
 	// sequence finishes.
 	SetActorEnableCollision(false);
+
+	UGameplayStatics::PlaySoundAtLocation(this, EnemyDeathSound, GetActorLocation());
 
 	// Reset to the same far-negative sentinel LastContactDamageTime/LastBurstEndTime start at, so a
 	// respawned enemy's first contact/burst is immediately available rather than silently

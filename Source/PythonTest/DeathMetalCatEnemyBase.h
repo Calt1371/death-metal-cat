@@ -12,6 +12,7 @@ class UPaperFlipbookComponent;
 class UPaperFlipbook;
 class AEnemyProjectile;
 class ARoomShell;
+class USoundBase;
 
 /** Internal-only (not exposed to Blueprint) phase tracking for the ranged-attack burst sequence -- same pattern as ADeathMetalCatCharacter's own EShootPhase. */
 enum class EEnemyShootPhase : uint8
@@ -106,6 +107,16 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))
 	int32 ScrapRewardMax = 10;
+
+	// -- SFX (sourced via AgentScripts/sfx_curator_agent.py, wired via AgentScripts/ue_wire_sfx.py) --
+
+	/** Played at this actor's location on any damaging hit (sword or gun) -- see TakeDamage. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> EnemyHitSound;
+
+	/** Played at this actor's location once, right as HandleDeath starts. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> EnemyDeathSound;
 
 	/** How long (seconds) the enemy stays hidden/dead before auto-respawning at its cached spawn location. Placeholder value, tune freely. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0"))

@@ -92,6 +92,17 @@ public:
 	/** True from ShowDeathScreen until UpdateDeathScreenFade's ramps both finish -- ADeathMetalCatCharacter::HandleDeathContinuePressed checks this before allowing a button press to respawn, so mashing a button the instant the player dies can't skip or cut the fade-in short. */
 	bool IsDeathScreenFadeInProgress() const { return bDeathScreenActive; }
 
+	/**
+	 * TEMPORARY (tonight's rough draft only): shows the full-screen "Coming Soon" placeholder
+	 * (opaque black backdrop + Coming_Soon.png, letterboxed to fill the screen, + a
+	 * "PRESS ANY BUTTON TO RETURN TO TITLE" hint line) -- see ADeathMetalCatCharacter::
+	 * ShowComingSoonScreen / ARoomProgressionManager::HandleRoomTransitionFadeOutComplete. Unlike
+	 * ShowDeathScreen this is a simple immediate show, no eased fade-in and no matching Hide: this
+	 * draft has nowhere further to send the player, so the screen just stays up until the player
+	 * presses any button and the level changes out from under it entirely.
+	 */
+	void ShowComingSoonScreen();
+
 private:
 	/**
 	 * Polls the owning character and refreshes whichever sub-elements have actually changed since
@@ -263,4 +274,18 @@ private:
 
 	/** GetWorld()->GetTimeSeconds() at the moment the most recent ShowDeathScreen call fired -- both the backdrop and image/text ramps below measure their own elapsed time from this same instant, just with the image/text ramp additionally offset by DeathContentFadeInDelay. */
 	float DeathScreenShowStartTime = 0.f;
+
+	// -- Coming Soon screen (temporary, tonight's rough draft only) --
+
+	/** Full-screen opaque black behind ComingSoonImage -- same full-screen-stretch construction as RoomFadeImage/DeathScreenBackdrop, just fully opaque and never animated. Added LAST in Initialize(), after even DeathScreenBackdrop, so this paints over the whole HUD. Hidden by default. */
+	UPROPERTY()
+	TObjectPtr<UImage> ComingSoonBackdrop;
+
+	/** Coming_Soon.png (imported as /Game/UI/ComingSoon/T_ComingSoon -- see AgentScripts/ue_import_coming_soon.py), letterboxed to fill the whole screen via UImage's default ScaleToFit stretch inside a full-screen (anchors 0,0-1,1) canvas slot. Hidden by default. */
+	UPROPERTY()
+	TObjectPtr<UImage> ComingSoonImage;
+
+	/** "PRESS ANY BUTTON TO RETURN TO TITLE", bottom-centre, same styling as UFullscreenVideoWidgetBase's hint line (white text, black outline) for visual consistency with the title/intro screens. Hidden by default. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> ComingSoonHintText;
 };

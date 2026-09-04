@@ -38,6 +38,9 @@ namespace
 	// you_died_death_metal_cat.png, imported by AgentScripts/ue_import_death_screen.py.
 	const TCHAR* YouDiedTexturePath = TEXT("/Game/UI/DeathScreen/T_YouDied.T_YouDied");
 
+	// Coming_Soon.png, imported by AgentScripts/ue_import_coming_soon.py -- see UGnarlyRankHUDWidget::ShowComingSoonScreen.
+	const TCHAR* ComingSoonTexturePath = TEXT("/Game/UI/ComingSoon/T_ComingSoon.T_ComingSoon");
+
 	// scraps-currency-logo.png_nobg.png, imported by AgentScripts/ue_import_item_sprites.py.
 	const TCHAR* ScrapsLogoPath = TEXT("/Game/UI/Items/T_ScrapsCurrency.T_ScrapsCurrency");
 
@@ -60,6 +63,13 @@ namespace
 	// decelerate into 1), used instead of a linear lerp specifically so the fade reads as smooth
 	// rather than mechanical.
 	constexpr float DeathFadeEaseExp = 2.f;
+
+	// Coming Soon screen hint line -- same size/margin as UFullscreenVideoWidgetBase's own hint line
+	// constants (HintFontSize/HintBottomMargin), just re-declared here rather than shared, for the
+	// same unity-build name-collision reason CombinedFreezeHoldSeconds/friends in
+	// TitleIntroCombinedWidget.cpp got their own renamed copies instead of reusing another file's.
+	constexpr int32 ComingSoonHintFontSize = 34;
+	constexpr float ComingSoonHintBottomMargin = 90.f;
 
 	// How long (seconds) the quip dialogue box takes to fade out once QuipDisplayDuration has
 	// elapsed -- a widget-visual-styling constant like the font sizes/positions above, not a
@@ -542,6 +552,76 @@ bool UGnarlyRankHUDWidget::Initialize()
 		// Hidden until the first ShowDeathScreen call -- the player hasn't died yet at HUD
 		// construction time (same reasoning as SetQuipVisualsOpacity(0.f) above).
 		SetDeathScreenVisible(false);
+
+		// Coming Soon screen: added LAST, after even DeathScreenBackdrop/Image/Text, so it paints
+		// over the entire HUD -- this is meant to fully replace what's on screen, not layer under
+		// anything. Temporary for tonight's rough draft only -- see ShowComingSoonScreen's comment.
+		ComingSoonBackdrop = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ComingSoonBackdrop"));
+		if (UTexture2D* WhiteTextureForComingSoon = LoadObject<UTexture2D>(nullptr, WhiteSquarePath))
+		{
+			ComingSoonBackdrop->SetBrushFromTexture(WhiteTextureForComingSoon);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[COMING SOON] Failed to load backdrop texture: %s"), WhiteSquarePath);
+		}
+		// Fully opaque, unlike DeathScreenBackdrop's 0.75 dim -- there's no scene left to dim, the
+		// room already faded to full black before this screen goes up (see ShowComingSoonScreen).
+		ComingSoonBackdrop->SetColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 1.f));
+
+		if (UCanvasPanelSlot* ComingSoonBackdropSlot = RootCanvas->AddChildToCanvas(ComingSoonBackdrop))
+		{
+			ComingSoonBackdropSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+			ComingSoonBackdropSlot->SetOffsets(FMargin(0.f));
+		}
+
+		// Filling the whole screen (anchors 0,0-1,1) rather than a fixed centered box like
+		// DeathScreenImage -- UImage's default Stretch (ScaleToFit) still preserves Coming_Soon.png's
+		// own aspect ratio, letterboxing inside this full-screen box exactly the way
+		// UFullscreenVideoWidgetBase's video image does, just without that class's ScaleBox wrapper
+		// (not needed here: a plain UImage already ScaleToFits by default).
+		ComingSoonImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ComingSoonImage"));
+		if (UTexture2D* ComingSoonTexture = LoadObject<UTexture2D>(nullptr, ComingSoonTexturePath))
+		{
+			ComingSoonImage->SetBrushFromTexture(ComingSoonTexture);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[COMING SOON] Failed to load Coming Soon texture: %s"), ComingSoonTexturePath);
+		}
+
+		if (UCanvasPanelSlot* ComingSoonImageSlot = RootCanvas->AddChildToCanvas(ComingSoonImage))
+		{
+			ComingSoonImageSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+			ComingSoonImageSlot->SetOffsets(FMargin(0.f));
+		}
+
+		// Bottom-centre hint line, same styling (white text, black outline) as
+		// UFullscreenVideoWidgetBase's hint line on the title/intro screens, for visual consistency.
+		ComingSoonHintText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ComingSoonHintText"));
+		ComingSoonHintText->SetText(FText::FromString(TEXT("PRESS ANY BUTTON TO RETURN TO TITLE")));
+		ComingSoonHintText->SetJustification(ETextJustify::Center);
+		ComingSoonHintText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		{
+			FSlateFontInfo ComingSoonHintFont = ComingSoonHintText->GetFont();
+			ComingSoonHintFont.Size = ComingSoonHintFontSize;
+			ComingSoonHintFont.OutlineSettings.OutlineSize = 3;
+			ComingSoonHintFont.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 1.f);
+			ComingSoonHintText->SetFont(ComingSoonHintFont);
+		}
+
+		if (UCanvasPanelSlot* ComingSoonHintSlot = RootCanvas->AddChildToCanvas(ComingSoonHintText))
+		{
+			ComingSoonHintSlot->SetAnchors(FAnchors(0.5f, 1.f));
+			ComingSoonHintSlot->SetAlignment(FVector2D(0.5f, 1.f));
+			ComingSoonHintSlot->SetPosition(FVector2D(0.f, -ComingSoonHintBottomMargin));
+			ComingSoonHintSlot->SetAutoSize(true);
+		}
+
+		// Hidden until the first (and only ever) ShowComingSoonScreen call.
+		ComingSoonBackdrop->SetVisibility(ESlateVisibility::Collapsed);
+		ComingSoonImage->SetVisibility(ESlateVisibility::Collapsed);
+		ComingSoonHintText->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
 	RefreshDisplay();
@@ -722,6 +802,22 @@ void UGnarlyRankHUDWidget::UpdateDeathScreenFade()
 	{
 		bDeathScreenActive = false;
 	}
+}
+
+void UGnarlyRankHUDWidget::ShowComingSoonScreen()
+{
+	// Simple immediate show, no eased ramp like ShowDeathScreen's UpdateDeathScreenFade -- the
+	// screen is already fully black (RoomFadeImage) by the time ARoomProgressionManager calls this,
+	// so there's nothing to visibly pop in against, and this is a one-shot, one-way screen for
+	// tonight's rough draft rather than something worth animating.
+	if (!ComingSoonBackdrop || !ComingSoonImage || !ComingSoonHintText)
+	{
+		return;
+	}
+
+	ComingSoonBackdrop->SetVisibility(ESlateVisibility::HitTestInvisible);
+	ComingSoonImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+	ComingSoonHintText->SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
 void UGnarlyRankHUDWidget::StartRoomFadeOut(float Duration)

@@ -24,6 +24,7 @@
 #include "Blueprint/UserWidget.h"
 #include "QuipLibrary.h"
 #include "RoomProgressionManager.h"
+#include "GameplayPlayerController.h"
 #include "DeathMetalCatEnemyBase.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -301,6 +302,7 @@ void ADeathMetalCatCharacter::HandleJump(const FInputActionValue& Value)
 		return;
 	}
 
+	UGameplayStatics::PlaySound2D(this, JumpSound);
 	Jump();
 }
 
@@ -314,6 +316,8 @@ void ADeathMetalCatCharacter::HandleDodge(const FInputActionValue& Value)
 		// mid-transformation.
 		return;
 	}
+
+	UGameplayStatics::PlaySound2D(this, DodgeSound);
 
 	UPaperFlipbookComponent* SpriteComp = GetSprite();
 	const float FacingSign = (SpriteComp && SpriteComp->GetRelativeScale3D().X < 0.f) ? -1.f : 1.f;
@@ -685,6 +689,8 @@ void ADeathMetalCatCharacter::HandleDeath()
 	// Hurt pose TakeDamage already started above, which reads fine as a placeholder death beat.
 	DisableInput(Cast<APlayerController>(GetController()));
 
+	UGameplayStatics::PlaySound2D(this, PlayerDeathSound);
+
 	if (GnarlyRankHUDWidgetInstance)
 	{
 		GnarlyRankHUDWidgetInstance->ShowDeathScreen();
@@ -799,6 +805,55 @@ void ADeathMetalCatCharacter::HandleRespawn()
 	{
 		GetWorldTimerManager().ClearTimer(CatNipTimerHandle);
 		EndCatNip();
+	}
+}
+
+void ADeathMetalCatCharacter::ShowComingSoonScreen()
+{
+	// Player input is already disabled by ARoomProgressionManager::BeginRoomTransition's own
+	// DisableInput call before this fires -- no need to disable it again here (same as HandleDeath
+	// relies on its own earlier DisableInput call).
+	if (GnarlyRankHUDWidgetInstance)
+	{
+		GnarlyRankHUDWidgetInstance->ShowComingSoonScreen();
+	}
+
+	// Same push-a-separate-InputComponent trick as HandleDeath's DeathContinueInputComponent --
+	// bound only to EKeys::AnyKey, on its own component rather than the (disabled) gameplay one, so
+	// listening here can never accidentally re-enable movement/combat input early.
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		ComingSoonContinueInputComponent = NewObject<UInputComponent>(this, TEXT("ComingSoonContinueInputComponent"));
+		ComingSoonContinueInputComponent->RegisterComponent();
+		ComingSoonContinueInputComponent->BindKey(EKeys::AnyKey, IE_Pressed, this, &ADeathMetalCatCharacter::HandleComingSoonContinuePressed);
+		PC->PushInputComponent(ComingSoonContinueInputComponent);
+	}
+}
+
+void ADeathMetalCatCharacter::HandleComingSoonContinuePressed()
+{
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	if (ComingSoonContinueInputComponent)
+	{
+		PC->PopInputComponent(ComingSoonContinueInputComponent);
+		ComingSoonContinueInputComponent->DestroyComponent();
+		ComingSoonContinueInputComponent = nullptr;
+	}
+
+	// Reuses the exact same quit-to-title path the pause menu's QUIT TO TITLE option already goes
+	// through -- unpauses (a no-op here since the game was never paused) and opens L_TitleScreen.
+	if (AGameplayPlayerController* GameplayPC = Cast<AGameplayPlayerController>(PC))
+	{
+		GameplayPC->RequestQuitToTitle();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[COMING SOON] Any-input pressed but the controller is not an AGameplayPlayerController -- can't reach L_TitleScreen."));
 	}
 }
 
@@ -1430,6 +1485,8 @@ void ADeathMetalCatCharacter::AddXP(float Amount)
 		RecalculateXPToNextLevel();
 		ApplyAttributeEffects();
 
+		UGameplayStatics::PlaySound2D(this, LevelUpSound);
+
 		UE_LOG(LogTemp, Warning, TEXT("[LEVEL UP] Level %d  Speed=%.1f Strength=%.1f Dexterity=%.1f Defense=%.1f SkillPoints=%d"),
 			CurrentLevel, Speed, Strength, Dexterity, Defense, SkillPoints);
 	}
@@ -1653,6 +1710,8 @@ void ADeathMetalCatCharacter::HandleSwordAttack(const FInputActionValue& Value)
 		}
 		return;
 	}
+
+	UGameplayStatics::PlaySound2D(this, SwordSwingSound);
 
 	const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	const bool bAirborne = MoveComp && MoveComp->IsFalling();
@@ -1931,6 +1990,7 @@ void ADeathMetalCatCharacter::OnSwordHitboxBeginOverlap(UPrimitiveComponent* Ove
 
 	if (DamageApplied > 0.f)
 	{
+		UGameplayStatics::PlaySoundAtLocation(this, SwordHitSound, OtherActor->GetActorLocation());
 		SpawnDamageNumber(OtherActor->GetActorLocation() + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
 		RegisterGnarlyHit();
 		AddRage(DamageApplied, RageGainPerDamageDealt);
@@ -2107,6 +2167,8 @@ void ADeathMetalCatCharacter::FireShotTrace()
 		return;
 	}
 
+	UGameplayStatics::PlaySound2D(this, GunFireSound);
+
 	// Same facing convention as the sword hitbox (confirmed correct via logged data): unflipped
 	// (Scale.X >= 0, facing right) fires toward +X; flipped (Scale.X < 0, facing left) fires -X.
 	// Read fresh each shot (not cached from when the button was first pressed) so a direction
@@ -2179,6 +2241,7 @@ void ADeathMetalCatCharacter::FireShotTrace()
 
 		if (DamageApplied > 0.f)
 		{
+			UGameplayStatics::PlaySoundAtLocation(this, GunHitSound, Hit.Location);
 			SpawnDamageNumber(Hit.Location + FVector(0.f, 0.f, DamageNumberSpawnHeight), DamageApplied, Tier);
 			// Gun hits still charge GnarlyHitCount toward the next rank -- only the melee damage
 			// bonus itself is sword-exclusive, not rank progression.

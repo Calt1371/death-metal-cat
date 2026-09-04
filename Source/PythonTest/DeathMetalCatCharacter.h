@@ -22,6 +22,7 @@ class UInputComponent;
 class UStaticMeshComponent;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
+class USoundBase;
 struct FInputActionValue;
 struct FHitResult;
 
@@ -396,6 +397,15 @@ protected:
 	void HandleRespawn();
 
 	/**
+	 * Bound to ComingSoonContinueInputComponent's EKeys::AnyKey binding -- see ShowComingSoonScreen.
+	 * Unlike HandleDeathContinuePressed there is no fade-in to wait out and nowhere further to send
+	 * the player, so the first press just pops/destroys ComingSoonContinueInputComponent and opens
+	 * L_TitleScreen via AGameplayPlayerController::RequestQuitToTitle -- the same quit-to-title path
+	 * the pause menu already uses.
+	 */
+	void HandleComingSoonContinuePressed();
+
+	/**
 	 * Rolls a damage tier (WeaknessChance / CriticalChance, remainder is Normal) and returns
 	 * BaseDamage scaled by that tier's multiplier; OutTier receives which tier was rolled.
 	 * Centralizes the roll here so OnSwordHitboxBeginOverlap and FireShotTrace both apply
@@ -479,6 +489,18 @@ public:
 	/** Public accessor for GnarlyRankHUDWidgetInstance -- ARoomProgressionManager::BeginRoomTransition needs to drive the room-transition fade (StartRoomFadeOut/StartRoomFadeIn) on it, and can't reach a private member of another class directly. May return nullptr before NotifyControllerChanged has ever created the widget. */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	UGnarlyRankHUDWidget* GetGnarlyRankHUDWidget() const { return GnarlyRankHUDWidgetInstance; }
+
+	/**
+	 * TEMPORARY (tonight's rough draft only): called by ARoomProgressionManager::HandleRoomTransitionFadeOutComplete
+	 * instead of proceeding into Room5 once its own fade-to-black finishes -- content beyond Room4
+	 * isn't built out yet, so this is a deliberate stopping point. Shows
+	 * GnarlyRankHUDWidgetInstance's full-screen "Coming Soon" overlay and pushes
+	 * ComingSoonContinueInputComponent (bound only to EKeys::AnyKey, same mechanism as
+	 * DeathContinueInputComponent) so any button press sends the player back to the title screen.
+	 * Player input is already disabled by BeginRoomTransition's own DisableInput call before this
+	 * fires, same as HandleDeath.
+	 */
+	void ShowComingSoonScreen();
 
 	/** Tick-driven follow-up to TestJumpDistance -- holds forward input every frame and detects landing (see TestJumpDistance's own doc comment). No-ops entirely while bJumpDistanceTestActive is false. */
 	void UpdateJumpDistanceTest();
@@ -1098,6 +1120,40 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0"))
 	float SpinnyDownFallSpeed = 1500.f;
 
+	// -- SFX (sourced via AgentScripts/sfx_curator_agent.py, wired via AgentScripts/ue_wire_sfx.py) --
+
+	/** Played (2D) once, right as HandleJump fires a normal ground jump -- see HandleJump. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> JumpSound;
+
+	/** Played (2D) once, right as HandleDodge starts the back-handspring -- see HandleDodge. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> DodgeSound;
+
+	/** Played (2D) once per accepted Sword Attack press, before any contact -- see HandleSwordAttack. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> SwordSwingSound;
+
+	/** Played at the struck enemy's location on a landed sword hit -- see OnSwordHitboxBeginOverlap. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> SwordHitSound;
+
+	/** Played (2D) once per shot fired, hit or miss -- see FireShotTrace. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> GunFireSound;
+
+	/** Played at the hit location on a landed gun shot -- see FireShotTrace. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> GunHitSound;
+
+	/** Played (2D) once, right as HandleDeath starts. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> PlayerDeathSound;
+
+	/** Played (2D) once per level gained -- see AddXP. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "SFX")
+	TObjectPtr<USoundBase> LevelUpSound;
+
 	// -- Gun Fire --
 
 	/**
@@ -1641,6 +1697,15 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UInputComponent> DeathContinueInputComponent = nullptr;
+
+	/**
+	 * Same mechanism as DeathContinueInputComponent (a separate InputComponent pushed onto the
+	 * player controller's own input stack, bound only to EKeys::AnyKey) but for
+	 * ShowComingSoonScreen/HandleComingSoonContinuePressed instead of the death screen. Popped and
+	 * destroyed the moment it fires -- this screen only ever needs one press.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UInputComponent> ComingSoonContinueInputComponent = nullptr;
 
 	/** Actor transform cached in BeginPlay -- where HandleRespawn puts the character back on death. Mirrors ADeathMetalCatEnemyBase::InitialSpawnTransform. */
 	FTransform InitialSpawnTransform;

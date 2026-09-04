@@ -109,6 +109,27 @@ void ARoomProgressionManager::BeginRoomTransition(ERoomID TargetRoomID, bool bIs
 
 void ARoomProgressionManager::HandleRoomTransitionFadeOutComplete()
 {
+	// TEMPORARY (tonight's rough draft only): Room5 onward isn't built out yet, so intercept right
+	// here instead of proceeding into the normal AdvanceToRoom/teleport/fade-back-in below -- the
+	// screen is already fully black from BeginRoomTransition's fade-out, so this is a clean place to
+	// swap in the "Coming Soon" placeholder instead of the next room. Room4A and Room4B both target
+	// Room5 as their NextRoomID (see RoomTypes.h), so this one check covers either branch. Player
+	// input stays disabled (BeginRoomTransition already called DisableInput); ShowComingSoonScreen
+	// wires its own separate "any button" listener to leave, same mechanism as the death screen's
+	// continue press. Remove this whole block once Room5+ are ready for this draft.
+	if (PendingTransitionRoomID == ERoomID::Room5)
+	{
+		if (ADeathMetalCatCharacter* PlayerCharacter = Cast<ADeathMetalCatCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
+		{
+			PlayerCharacter->ShowComingSoonScreen();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[ROOM PROGRESSION] Reached the Room4->Room5 Coming Soon stop but found no player character to show it on."));
+		}
+		return;
+	}
+
 	// Screen is now fully black -- safe to do the actual room switch and teleport invisibly.
 	AdvanceToRoom(PendingTransitionRoomID);
 

@@ -175,11 +175,11 @@ void UFullscreenVideoWidgetBase::NativeConstruct()
 
 	MediaPlayer->OnEndReached.AddDynamic(this, &UFullscreenVideoWidgetBase::HandleMediaEndReached);
 
-	// A UUserWidget can't own an ActorComponent itself, so MediaPlayer's audio track (if it has
-	// one -- the title screen's own clip currently doesn't, the cinematic's does) is routed through
-	// a small dedicated actor instead -- see AMediaAudioActor's own comment. Guarded in case
-	// NativeConstruct somehow runs more than once for the same widget instance, same defensive
-	// pattern as the rest of this class.
+	// A UUserWidget can't own an ActorComponent itself, so MediaPlayer's audio track is routed
+	// through a small dedicated actor instead -- see AMediaAudioActor's own comment. Only spawned
+	// here; NOT wired to MediaPlayer yet -- see StartAudioOnceReady/NativeTick for why that's
+	// deferred. Guarded in case NativeConstruct somehow runs more than once for the same widget
+	// instance, same defensive pattern as the rest of this class.
 	if (!AudioActor)
 	{
 		if (UWorld* World = GetWorld())
@@ -187,12 +187,9 @@ void UFullscreenVideoWidgetBase::NativeConstruct()
 			AudioActor = World->SpawnActor<AMediaAudioActor>();
 		}
 	}
-	if (AudioActor)
-	{
-		AudioActor->SetMediaPlayer(MediaPlayer);
-	}
 
 	bVideoDimensionsApplied = false;
+	bAudioStarted = false;
 
 	if (!MediaPlayer->OpenSource(MediaSource))
 	{
@@ -222,8 +219,31 @@ void UFullscreenVideoWidgetBase::NativeTick(const FGeometry& MyGeometry, float I
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	ApplyVideoDimensions();
+	StartAudioOnceReady();
 	UpdateHintPulse(InDeltaTime);
 	UpdateFadeToBlack();
+}
+
+void UFullscreenVideoWidgetBase::StartAudioOnceReady()
+{
+	if (bAudioStarted || !AudioActor || !MediaPlayer)
+	{
+		return;
+	}
+
+	// Waits for the exact same "the player has genuinely opened and knows its own duration" signal
+	// ApplyVideoDimensions already relies on, rather than wiring the audio component up unconditionally
+	// in NativeConstruct (which this used to do). Confirmed live (2026-09-03): starting it immediately
+	// in NativeConstruct -- before OpenSource has had any chance to actually take effect -- worked for
+	// the intro cinematic (the SECOND screen loaded in a process, with an already-warm Media Framework/
+	// audio pipeline) but produced no audio at all for the title screen (the FIRST screen loaded, cold).
+	// Waiting for this proven-reliable readiness check fixes both cases the same way, rather than
+	// depending on how warm the pipeline happens to be when this runs.
+	if (MediaPlayer->GetDuration() > FTimespan::Zero())
+	{
+		AudioActor->SetMediaPlayer(MediaPlayer);
+		bAudioStarted = true;
+	}
 }
 
 void UFullscreenVideoWidgetBase::ApplyVideoDimensions()

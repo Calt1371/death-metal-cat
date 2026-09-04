@@ -79,6 +79,9 @@ protected:
 	 */
 	void ApplyVideoDimensions();
 
+	/** Called every Tick; wires AudioActor to MediaPlayer (starting its audio) the first time the player reports a real duration -- see the .cpp for why this can't just happen once, unconditionally, in NativeConstruct. No-ops once done for this construct. */
+	void StartAudioOnceReady();
+
 	/** Safety/completion hook for UMediaPlayer::OnEndReached. Default no-op -- the title screen uses this as a safety net for its freeze margin, the cinematic uses it to detect natural (unskipped) completion. */
 	UFUNCTION()
 	virtual void HandleMediaEndReached();
@@ -127,6 +130,9 @@ private:
 	void UpdateFadeToBlack();
 
 	bool bVideoDimensionsApplied = false;
+
+	/** True once StartAudioOnceReady has wired AudioActor up for this construct -- see that method. */
+	bool bAudioStarted = false;
 
 	/** Accumulates every tick; drives UpdateHintPulse's sine. */
 	float HintPulseTime = 0.f;

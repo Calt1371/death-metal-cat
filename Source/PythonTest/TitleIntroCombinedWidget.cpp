@@ -136,6 +136,33 @@ void UTitleIntroCombinedWidget::UpdateLoopCycle()
 		break;
 	}
 
+	case ELoopState::PendingCommit:
+	{
+		// Confirms the Seek(Zero)+SetRate(1.f) NotifyAnyInput issued on entry to this state has
+		// genuinely taken hold -- same confirmation check Restarting uses, just landing on Committed
+		// (never re-freezes) instead of Playing (which would). See PendingCommit's own comment.
+		const FTimespan FreezeAt = FTimespan::FromSeconds(TitleSegmentDuration - CombinedFreezeMarginSeconds);
+		if (MediaPlayer->GetTime() < FreezeAt)
+		{
+			LoopState = ELoopState::Committed;
+			break;
+		}
+
+		if (World->GetTimeSeconds() - PendingCommitRequestTime >= CombinedRestartTimeoutSeconds)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[INTRO] Resume-from-freeze seek did not rewind within %.0fs -- reopening the source."), CombinedRestartTimeoutSeconds);
+			if (MediaSource)
+			{
+				MediaPlayer->OpenSource(MediaSource);
+			}
+			// Commit regardless -- the player already accepted "any input" and told the player so
+			// (hint text already changed); there's no going back to the title loop from here even if
+			// the reopen itself has the same reliability problem this whole class exists to avoid.
+			LoopState = ELoopState::Committed;
+		}
+		break;
+	}
+
 	case ELoopState::Committed:
 		break;
 	}
@@ -173,26 +200,51 @@ void UTitleIntroCombinedWidget::RestartLoop()
 
 void UTitleIntroCombinedWidget::NotifyAnyInput()
 {
-	if (LoopState != ELoopState::Committed)
+	if (LoopState != ELoopState::Committed && LoopState != ELoopState::PendingCommit)
 	{
-		// First press: leave the loop for good and let the ALREADY-OPEN, ALREADY-PLAYING player just
-		// keep rolling forward into the intro portion -- no Seek, no OpenSource, nothing that touches
-		// the broken second-source path. If we were frozen, this is the only nudge needed to resume;
-		// if we were mid-loop-playback, playback is already at rate 1 and needs nothing at all.
-		LoopState = ELoopState::Committed;
-		MediaPlayer->SetRate(1.f);
+		// First press: leave the loop for good. If we were mid-loop-playback (never froze), playback
+		// is already at rate 1 and there's nothing to do beyond marking it Committed -- it just keeps
+		// rolling forward into the intro portion with no OpenSource, nothing touching the broken
+		// second-source path.
+		//
+		// If we WERE frozen (paused via SetRate(0.f)), SetRate(1.f) alone does not resume real
+		// decoding -- confirmed live (2026-09-04): IsPlaying/IsPaused both flip back to
+		// playing-shaped values with no error, but GetTime() then sits dead at the exact frozen
+		// timestamp indefinitely. Pairing SetRate(1.f) with a Seek() to the same timestamp, and
+		// separately with a Seek() to a nearby-but-different timestamp, both failed the same way --
+		// confirmed live immediately after each. The only pairing proven to actually resume forward
+		// playback anywhere in this file is RestartLoop()'s Seek(Zero) + SetRate(1.f), so resuming out
+		// of a freeze reuses that exact call via PendingCommit (see its enum comment) rather than
+		// guessing at another seek target -- UpdateLoopCycle confirms it actually took hold before
+		// moving on to Committed.
+		const bool bWasFrozen = (LoopState == ELoopState::Frozen);
+		if (bWasFrozen)
+		{
+			MediaPlayer->Seek(FTimespan::Zero());
+			MediaPlayer->SetRate(1.f);
+			if (const UWorld* World = GetWorld())
+			{
+				PendingCommitRequestTime = World->GetTimeSeconds();
+			}
+			LoopState = ELoopState::PendingCommit;
+		}
+		else
+		{
+			LoopState = ELoopState::Committed;
+		}
 
 		if (HintText)
 		{
 			HintText->SetText(FText::FromString(TEXT("PRESS ANY BUTTON TO SKIP")));
 		}
 
-		UE_LOG(LogTemp, Log, TEXT("[INTRO] Committed to playing the intro portion through."));
+		UE_LOG(LogTemp, Log, TEXT("[INTRO] Committed to playing the intro portion through (was frozen: %d)."), bWasFrozen ? 1 : 0);
 		return;
 	}
 
 	// Second press: skip straight to gameplay, same hand-off HandleMediaEndReached uses for a
-	// natural (unskipped) finish.
+	// natural (unskipped) finish. Also covers the (practically unreachable -- PendingCommit resolves
+	// within a tick or two) edge of a second press landing before PendingCommit has resolved.
 	UE_LOG(LogTemp, Log, TEXT("[INTRO] Skip pressed."));
 	OnReadyForGameplayDelegate.ExecuteIfBound();
 }
@@ -209,14 +261,14 @@ void UTitleIntroCombinedWidget::HandleMediaEndReached()
 		return;
 	}
 
-	if (LoopState != ELoopState::Committed)
+	if (LoopState != ELoopState::Committed && LoopState != ELoopState::PendingCommit)
 	{
 		// Reached true EOF before ever leaving the loop -- shouldn't normally happen (the loop's own
 		// freeze margin should always catch it first), but if a hitch let it through, treat it the
 		// same as a natural intro completion rather than getting stuck.
 		UE_LOG(LogTemp, Warning, TEXT("[TITLE] Playback hit EOF before the freeze margin -- consider raising FreezeMarginSeconds."));
-		LoopState = ELoopState::Committed;
 	}
+	LoopState = ELoopState::Committed;
 
 	UE_LOG(LogTemp, Log, TEXT("[INTRO] Reached the end of the file naturally."));
 	OnReadyForGameplayDelegate.ExecuteIfBound();

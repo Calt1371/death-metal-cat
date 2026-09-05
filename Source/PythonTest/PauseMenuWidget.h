@@ -95,7 +95,7 @@ private:
 	/** Rebuilds ControlsText from the possessed character's MoveMappingContext's CURRENT mappings -- called every time the Controls page is opened (not cached), so it always reflects whatever the bindings actually are right now. See class comment on why this must be live rather than hardcoded. */
 	void RefreshControlsList();
 
-	/** Nudges master volume or brightness (whichever OptionsSelectedIndex points at) by Delta via the GameInstance, then refreshes the display. No-op off the Options page. */
+	/** Nudges SFX volume, Music volume, or brightness (whichever OptionsSelectedIndex points at) by Delta via the GameInstance, then refreshes the display. No-op off the Options page. */
 	void AdjustSelectedOptionsValue(float Delta);
 
 	/** "IA_SwordAttack" -> "Sword Attack" -- purely cosmetic readability pass over an input action asset's own object name, used by RefreshControlsList since UInputAction has no separate display-name property in this project. */
@@ -109,7 +109,7 @@ private:
 	/** 0=Resume, 1=Options, 2=Controls, 3=Quit To Title. */
 	int32 MainSelectedIndex = 0;
 
-	/** 0=Sound, 1=Brightness. */
+	/** 0=SFX Volume, 1=Music Volume, 2=Brightness. */
 	int32 OptionsSelectedIndex = 0;
 
 	// -- Shared --
@@ -131,13 +131,22 @@ private:
 
 	// -- Options page --
 	UPROPERTY()
-	TObjectPtr<UTextBlock> SoundLabel;
+	TObjectPtr<UTextBlock> SFXLabel;
 
 	UPROPERTY()
-	TObjectPtr<UProgressBar> SoundBar;
+	TObjectPtr<UProgressBar> SFXBar;
 
 	UPROPERTY()
-	TObjectPtr<UTextBlock> SoundValueText;
+	TObjectPtr<UTextBlock> SFXValueText;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> MusicLabel;
+
+	UPROPERTY()
+	TObjectPtr<UProgressBar> MusicBar;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> MusicValueText;
 
 	UPROPERTY()
 	TObjectPtr<UTextBlock> BrightnessLabel;

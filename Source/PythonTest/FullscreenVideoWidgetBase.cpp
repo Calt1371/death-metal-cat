@@ -290,9 +290,14 @@ void UFullscreenVideoWidgetBase::LogMediaDiagnostics(float DeltaTime)
 		SurfaceW, SurfaceH);
 }
 
+void UFullscreenVideoWidgetBase::SetHeldForReveal(bool bHeld)
+{
+	bHeldForReveal = bHeld;
+}
+
 void UFullscreenVideoWidgetBase::StartAudioOnceReady()
 {
-	if (bAudioStarted || !AudioActor || !MediaPlayer)
+	if (bAudioStarted || bHeldForReveal || !AudioActor || !MediaPlayer)
 	{
 		return;
 	}

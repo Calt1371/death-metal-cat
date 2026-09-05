@@ -72,6 +72,23 @@ private:
 		Playing,
 		Frozen,
 		Restarting,
+		/**
+		 * NotifyAnyInput's first press landed while Frozen (paused via SetRate(0.f)) -- waiting for a
+		 * Seek(Zero)+SetRate(1.f) resume (issued the instant this state is entered) to genuinely take
+		 * hold before moving on to Committed. Needed because resuming a PAUSED player only reliably
+		 * works via that exact pairing -- confirmed live (2026-09-04), in this exact scenario, that
+		 * SetRate(1.f) alone, and separately SetRate(1.f) paired with a Seek() to the same or a
+		 * nearby-but-different timestamp, all leave GetTime() frozen indefinitely (IsPlaying/IsPaused
+		 * both report playing-shaped values, no error, just no actual new frames) -- the identical
+		 * "reports healthy, never advances" signature as the second-OpenSource bug this class's
+		 * comment describes, just triggered here by resuming a paused player rather than a second
+		 * Open. Seek(Zero) is the one pairing already proven reliable in this exact file (RestartLoop
+		 * uses it every loop cycle), so resuming out of a freeze reuses it verbatim rather than
+		 * guessing at another seek target. This means a successful commit-while-frozen briefly
+		 * replays the tail of the title segment (from 0 back up to the freeze point) before rolling
+		 * into the intro -- a minor, accepted UX cost for actually working reliably.
+		 */
+		PendingCommit,
 		/** Left the loop for good -- the intro portion is playing through, no more loop-cycle logic runs. */
 		Committed,
 	};
@@ -89,6 +106,9 @@ private:
 
 	/** GetWorld()->GetTimeSeconds() at the moment RestartLoop issued its Seek. */
 	float RestartRequestTime = 0.f;
+
+	/** GetWorld()->GetTimeSeconds() at the moment NotifyAnyInput's PendingCommit resume issued its Seek -- see PendingCommit's comment. */
+	float PendingCommitRequestTime = 0.f;
 
 	FSimpleDelegate OnReadyForGameplayDelegate;
 };

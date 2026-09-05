@@ -51,6 +51,19 @@ public:
 	 */
 	void BeginFadeToBlack(float Duration);
 
+	/**
+	 * When true, StartAudioOnceReady defers wiring AudioActor up even once the player's duration is
+	 * known -- lets a GameMode pre-open this widget's MediaPlayer immediately at process start (see
+	 * TitleIntroCombinedWidget's class comment for why OpenSource must happen that early) while
+	 * keeping it fully silent, hidden behind an earlier screen, until that screen is actually
+	 * dismissed. Only the audio is gated here -- the caller is responsible for also keeping the
+	 * widget visually hidden (SetVisibility/SetRenderOpacity) for as long as this is true; playback
+	 * itself (and the title loop's own Play/Freeze/Restart cycling) keeps running underneath the
+	 * whole time, same as it always has, so there is nothing new to "catch up" once revealed.
+	 * Defaults to false -- every other use of this base class is unaffected.
+	 */
+	void SetHeldForReveal(bool bHeld);
+
 protected:
 	// -- subclass configuration hooks --
 
@@ -171,6 +184,9 @@ private:
 
 	/** True once StartAudioOnceReady has wired AudioActor up for this construct -- see that method. */
 	bool bAudioStarted = false;
+
+	/** See SetHeldForReveal. */
+	bool bHeldForReveal = false;
 
 	/** Accumulates every tick; drives UpdateHintPulse's sine. */
 	float HintPulseTime = 0.f;

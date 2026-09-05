@@ -51,8 +51,12 @@ namespace
 	const TCHAR* MainRowLabels[4] = { TEXT("RESUME"), TEXT("OPTIONS"), TEXT("CONTROLS"), TEXT("QUIT TO TITLE") };
 	constexpr float ArrowOffsetFromBox = 27.f;
 
-	constexpr float OptionsSoundRowY = 440.f;
-	constexpr float OptionsBrightnessRowY = 590.f;
+	// Three rows now (was Sound/Brightness) -- evenly spaced across the same vertical span the old
+	// two-row layout used (440-590), so the options page still fits the same panel area.
+	constexpr float OptionsSFXRowY = 400.f;
+	constexpr float OptionsMusicRowY = 500.f;
+	constexpr float OptionsBrightnessRowY = 600.f;
+	const float OptionsRowY[3] = { OptionsSFXRowY, OptionsMusicRowY, OptionsBrightnessRowY };
 	constexpr float OptionsLabelX = 70.f;
 	constexpr float OptionsBarX = 70.f;
 	constexpr float OptionsBarWidth = 420.f;
@@ -61,7 +65,7 @@ namespace
 	constexpr float OptionsValueWidth = 80.f;
 	constexpr float OptionsHighlightHeight = 92.f;
 
-	// How much one Left/Right press changes Sound/Brightness -- 5% per press, 21 discrete stops.
+	// How much one Left/Right press changes SFX/Music/Brightness -- 5% per press, 21 discrete stops.
 	constexpr float OptionsAdjustStep = 0.05f;
 
 	// -- Shared text/box styling --
@@ -218,7 +222,7 @@ void UPauseMenuWidget::BuildOptionsPageWidgets(UCanvasPanel* ArtCanvas)
 		ChildSlot->SetAnchors(FAnchors(0.f, 0.f));
 		ChildSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 		ChildSlot->SetSize(FVector2D(ContentWidth, OptionsHighlightHeight));
-		ChildSlot->SetPosition(FVector2D(ContentLeft + ContentWidth / 2.f, OptionsSoundRowY));
+		ChildSlot->SetPosition(FVector2D(ContentLeft + ContentWidth / 2.f, OptionsRowY[0]));
 		ChildSlot->SetAutoSize(false);
 	}
 
@@ -268,9 +272,13 @@ void UPauseMenuWidget::BuildOptionsPageWidgets(UCanvasPanel* ArtCanvas)
 		return ValueText;
 	};
 
-	SoundLabel = MakeRowLabel(TEXT("SoundLabel"), TEXT("SOUND"), OptionsSoundRowY);
-	SoundBar = MakeRowBar(TEXT("SoundBar"), OptionsSoundRowY);
-	SoundValueText = MakeRowValueText(TEXT("SoundValueText"), OptionsSoundRowY);
+	SFXLabel = MakeRowLabel(TEXT("SFXLabel"), TEXT("SFX VOLUME"), OptionsSFXRowY);
+	SFXBar = MakeRowBar(TEXT("SFXBar"), OptionsSFXRowY);
+	SFXValueText = MakeRowValueText(TEXT("SFXValueText"), OptionsSFXRowY);
+
+	MusicLabel = MakeRowLabel(TEXT("MusicLabel"), TEXT("MUSIC VOLUME"), OptionsMusicRowY);
+	MusicBar = MakeRowBar(TEXT("MusicBar"), OptionsMusicRowY);
+	MusicValueText = MakeRowValueText(TEXT("MusicValueText"), OptionsMusicRowY);
 
 	BrightnessLabel = MakeRowLabel(TEXT("BrightnessLabel"), TEXT("BRIGHTNESS"), OptionsBrightnessRowY);
 	BrightnessBar = MakeRowBar(TEXT("BrightnessBar"), OptionsBrightnessRowY);
@@ -323,9 +331,12 @@ void UPauseMenuWidget::RefreshPageVisibility()
 		if (Label) Label->SetVisibility(MainVis);
 	}
 
-	if (SoundLabel) SoundLabel->SetVisibility(OptionsVis);
-	if (SoundBar) SoundBar->SetVisibility(OptionsVis);
-	if (SoundValueText) SoundValueText->SetVisibility(OptionsVis);
+	if (SFXLabel) SFXLabel->SetVisibility(OptionsVis);
+	if (SFXBar) SFXBar->SetVisibility(OptionsVis);
+	if (SFXValueText) SFXValueText->SetVisibility(OptionsVis);
+	if (MusicLabel) MusicLabel->SetVisibility(OptionsVis);
+	if (MusicBar) MusicBar->SetVisibility(OptionsVis);
+	if (MusicValueText) MusicValueText->SetVisibility(OptionsVis);
 	if (BrightnessLabel) BrightnessLabel->SetVisibility(OptionsVis);
 	if (BrightnessBar) BrightnessBar->SetVisibility(OptionsVis);
 	if (BrightnessValueText) BrightnessValueText->SetVisibility(OptionsVis);
@@ -366,18 +377,22 @@ void UPauseMenuWidget::RefreshOptionsDisplay()
 		return;
 	}
 
-	const float Volume = GameInstance->GetMasterVolume();
+	const float SFXVolume = GameInstance->GetSFXVolume();
+	const float MusicVolume = GameInstance->GetMusicVolume();
 	const float Brightness = GameInstance->GetBrightness();
 
-	if (SoundBar) SoundBar->SetPercent(Volume);
-	if (SoundValueText) SoundValueText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Volume * 100.f))));
+	if (SFXBar) SFXBar->SetPercent(SFXVolume);
+	if (SFXValueText) SFXValueText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(SFXVolume * 100.f))));
+
+	if (MusicBar) MusicBar->SetPercent(MusicVolume);
+	if (MusicValueText) MusicValueText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(MusicVolume * 100.f))));
 
 	if (BrightnessBar) BrightnessBar->SetPercent(Brightness);
 	if (BrightnessValueText) BrightnessValueText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Brightness * 100.f))));
 
 	if (OptionsHighlightBox)
 	{
-		const float RowY = (OptionsSelectedIndex == 0) ? OptionsSoundRowY : OptionsBrightnessRowY;
+		const float RowY = OptionsRowY[OptionsSelectedIndex];
 		if (UCanvasPanelSlot* ChildSlot = Cast<UCanvasPanelSlot>(OptionsHighlightBox->Slot))
 		{
 			ChildSlot->SetPosition(FVector2D(ContentLeft + ContentWidth / 2.f, RowY));
@@ -469,7 +484,7 @@ void UPauseMenuWidget::NavigateUp()
 		RefreshMainHighlight();
 		break;
 	case EPausePage::Options:
-		OptionsSelectedIndex = (OptionsSelectedIndex + 1) % 2;
+		OptionsSelectedIndex = (OptionsSelectedIndex + 2) % 3;
 		RefreshOptionsDisplay();
 		break;
 	case EPausePage::Controls:
@@ -490,7 +505,7 @@ void UPauseMenuWidget::NavigateDown()
 		RefreshMainHighlight();
 		break;
 	case EPausePage::Options:
-		OptionsSelectedIndex = (OptionsSelectedIndex + 1) % 2;
+		OptionsSelectedIndex = (OptionsSelectedIndex + 1) % 3;
 		RefreshOptionsDisplay();
 		break;
 	case EPausePage::Controls:
@@ -526,13 +541,17 @@ void UPauseMenuWidget::AdjustSelectedOptionsValue(float Delta)
 		return;
 	}
 
-	if (OptionsSelectedIndex == 0)
+	switch (OptionsSelectedIndex)
 	{
-		GameInstance->SetMasterVolume(this, GameInstance->GetMasterVolume() + Delta);
-	}
-	else
-	{
+	case 0:
+		GameInstance->SetSFXVolume(this, GameInstance->GetSFXVolume() + Delta);
+		break;
+	case 1:
+		GameInstance->SetMusicVolume(this, GameInstance->GetMusicVolume() + Delta);
+		break;
+	default:
 		GameInstance->SetBrightness(GameInstance->GetBrightness() + Delta);
+		break;
 	}
 
 	RefreshOptionsDisplay();

@@ -8,15 +8,38 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/AudioComponent.h"
 
 ARoomProgressionManager::ARoomProgressionManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	// This actor has no other components/scene presence, so MusicAudioComponent becomes the root
+	// outright -- its own transform is irrelevant anyway (bIsUISound: a plain 2D sound, no spatial
+	// attenuation). bAutoActivate false: BackgroundMusic isn't assigned yet this early (set on the
+	// placed instance, not a class default), so BeginPlay calls Play() explicitly instead, once
+	// BackgroundMusic is known to be valid.
+	MusicAudioComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("MusicAudioComponent"));
+	RootComponent = MusicAudioComponent;
+	MusicAudioComponent->bAutoActivate = false;
+	MusicAudioComponent->bIsUISound = true;
 }
 
 void ARoomProgressionManager::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// A real owned AudioComponent, not PlaySound2D's fire-and-forget call -- see
+	// MusicAudioComponent's own comment for why (a looping sound played via PlaySound2D has nothing
+	// tracking it and risks being orphaned). Started once here rather than per-room-transition --
+	// this is level-wide background music, not a room-specific ambience, and looping is baked into
+	// the imported SoundWave itself, so a single Play() call is all that's needed for it to keep
+	// playing for the rest of the level.
+	if (BackgroundMusic)
+	{
+		MusicAudioComponent->SetSound(BackgroundMusic);
+		MusicAudioComponent->Play();
+	}
 
 	TArray<AActor*> FoundShells;
 	UGameplayStatics::GetAllActorsOfClass(this, ARoomShell::StaticClass(), FoundShells);

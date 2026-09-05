@@ -6,6 +6,8 @@
 #include "RoomProgressionManager.generated.h"
 
 class ARoomShell;
+class USoundBase;
+class UAudioComponent;
 
 /**
  * Single source of truth for which room in the city biome is currently active. Place exactly one
@@ -93,10 +95,34 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Room Transition", meta = (ClampMin = "0"))
 	float FadeInDuration = 0.35f;
 
+	/**
+	 * Looping background music for the whole biome, played via MusicAudioComponent starting at
+	 * BeginPlay and left to play for the rest of the level (looping is a property of the imported
+	 * USoundWave itself -- see AgentScripts/ue_import_level_music.py -- not something this class
+	 * re-triggers). Null-safe: MusicAudioComponent->SetSound + Play no-op harmlessly if this isn't
+	 * set. Not restarted on death/ResetToStartingRoom -- a full run restart shouldn't also restart
+	 * the music from the top.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TObjectPtr<USoundBase> BackgroundMusic;
+
 protected:
 	virtual void BeginPlay() override;
 
 private:
+	/**
+	 * Owns BackgroundMusic's playback for the whole level's lifetime. A real component (not a
+	 * PlaySound2D fire-and-forget call) specifically because PlaySound2D's sound has no owning
+	 * component to keep it tracked -- confirmed live: doing that for a looping sound logs
+	 * "LogAudio: Warning: Detected orphaned sound which is not a one-shot 'DMC_Music'. Sounds which
+	 * are not one-shots need to have audio components or they risk being orphaned." Created as a
+	 * real subobject in the constructor (an AActor can own components directly, unlike a UUserWidget
+	 * -- see AMediaAudioActor's own comment for that different case), so it persists exactly as long
+	 * as this manager does.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Audio")
+	TObjectPtr<UAudioComponent> MusicAudioComponent;
+
 	UPROPERTY(Transient)
 	TMap<ERoomID, TObjectPtr<ARoomShell>> RoomShellsByID;
 

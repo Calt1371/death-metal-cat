@@ -24,8 +24,11 @@ namespace
 
 	// The art's native resolution -- same technique as UPauseMenuWidget, and this background
 	// (Adjustment_Menu.png) happens to share Pause_screen_DMC.png's exact 1672x941 dimensions.
-	constexpr float NativeWidth = 1672.f;
-	constexpr float NativeHeight = 941.f;
+	// Name-prefixed (like FullscreenVideoWidgetBase.cpp's own constants) because UE compiles the
+	// module as a unity build in a full/fresh build, concatenating every .cpp into one translation
+	// unit -- an unprefixed name here collides with PauseMenuWidget.cpp's identically-named constant.
+	constexpr float AdjNativeWidth = 1672.f;
+	constexpr float AdjNativeHeight = 941.f;
 
 	// -- Column X positions, measured directly off Adjustment_Menu.png's baked-in icon/label art --
 	constexpr float BrightnessColumnX = 385.f;
@@ -52,18 +55,21 @@ namespace
 	constexpr float AdjustStep = 0.05f;
 
 	constexpr int32 ValueFontSize = 24;
-	constexpr int32 HintFontSize = 22;
+	// Prefixed -- collides with FullscreenVideoWidgetBase.cpp/GnarlyRankHUDWidget.cpp's own
+	// identically-named constant in a unity build (see AdjNativeWidth's comment).
+	constexpr int32 AdjHintFontSize = 22;
 
 	// Same highlight colors as UPauseMenuWidget, for visual consistency between the two settings
-	// screens.
-	const FLinearColor HighlightFillColor(0.32f, 0.05f, 0.06f, 0.6f);
-	const FLinearColor HighlightOutlineColor(0.92f, 0.26f, 0.16f, 1.f);
-	constexpr float HighlightOutlineWidth = 3.f;
-	constexpr float HighlightCornerRadius = 6.f;
+	// screens. Prefixed -- see AdjNativeWidth's comment for why (collides with PauseMenuWidget.cpp).
+	const FLinearColor AdjHighlightFillColor(0.32f, 0.05f, 0.06f, 0.6f);
+	const FLinearColor AdjHighlightOutlineColor(0.92f, 0.26f, 0.16f, 1.f);
+	constexpr float AdjHighlightOutlineWidth = 3.f;
+	constexpr float AdjHighlightCornerRadius = 6.f;
 
 	const FLinearColor BarFillColor(0.85f, 0.18f, 0.16f, 1.f);
 
-	FSlateFontInfo MakeOutlinedFont(const FSlateFontInfo& BaseFont, int32 Size)
+	// Prefixed -- collides with PauseMenuWidget.cpp's identically-named function in a unity build.
+	FSlateFontInfo MakeAdjOutlinedFont(const FSlateFontInfo& BaseFont, int32 Size)
 	{
 		FSlateFontInfo Font = BaseFont;
 		Font.Size = Size;
@@ -95,8 +101,8 @@ bool UAdjustmentMenuWidget::Initialize()
 		}
 
 		USizeBox* NativeSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("NativeSizeBox"));
-		NativeSizeBox->SetWidthOverride(NativeWidth);
-		NativeSizeBox->SetHeightOverride(NativeHeight);
+		NativeSizeBox->SetWidthOverride(AdjNativeWidth);
+		NativeSizeBox->SetHeightOverride(AdjNativeHeight);
 		OuterScaleBox->AddChild(NativeSizeBox);
 
 		UCanvasPanel* ArtCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("ArtCanvas"));
@@ -121,7 +127,7 @@ bool UAdjustmentMenuWidget::Initialize()
 
 		// -- Highlight box, added before the bars/text so it paints under them. --
 		HighlightBox = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("HighlightBox"));
-		HighlightBox->SetBrush(FSlateRoundedBoxBrush(HighlightFillColor, HighlightCornerRadius, HighlightOutlineColor, HighlightOutlineWidth));
+		HighlightBox->SetBrush(FSlateRoundedBoxBrush(AdjHighlightFillColor, AdjHighlightCornerRadius, AdjHighlightOutlineColor, AdjHighlightOutlineWidth));
 		if (UCanvasPanelSlot* ChildSlot = ArtCanvas->AddChildToCanvas(HighlightBox))
 		{
 			ChildSlot->SetAnchors(FAnchors(0.f, 0.f));
@@ -151,7 +157,7 @@ bool UAdjustmentMenuWidget::Initialize()
 			UTextBlock* ValueText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), Name);
 			ValueText->SetJustification(ETextJustify::Center);
 			ValueText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-			ValueText->SetFont(MakeOutlinedFont(ValueText->GetFont(), ValueFontSize));
+			ValueText->SetFont(MakeAdjOutlinedFont(ValueText->GetFont(), ValueFontSize));
 			if (UCanvasPanelSlot* ChildSlot = ArtCanvas->AddChildToCanvas(ValueText))
 			{
 				ChildSlot->SetAnchors(FAnchors(0.f, 0.f));
@@ -175,12 +181,12 @@ bool UAdjustmentMenuWidget::Initialize()
 		ContinueHintText->SetText(FText::FromString(TEXT("PRESS ENTER / A TO CONTINUE")));
 		ContinueHintText->SetJustification(ETextJustify::Center);
 		ContinueHintText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-		ContinueHintText->SetFont(MakeOutlinedFont(ContinueHintText->GetFont(), HintFontSize));
+		ContinueHintText->SetFont(MakeAdjOutlinedFont(ContinueHintText->GetFont(), AdjHintFontSize));
 		if (UCanvasPanelSlot* ChildSlot = ArtCanvas->AddChildToCanvas(ContinueHintText))
 		{
 			ChildSlot->SetAnchors(FAnchors(0.f, 0.f));
 			ChildSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-			ChildSlot->SetPosition(FVector2D(NativeWidth / 2.f, ContinueHintY));
+			ChildSlot->SetPosition(FVector2D(AdjNativeWidth / 2.f, ContinueHintY));
 			ChildSlot->SetAutoSize(true);
 		}
 

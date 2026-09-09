@@ -3,13 +3,13 @@
 #include "HAL/IConsoleManager.h"
 
 // Single on/off switch for whether a cleared-room barrier is allowed to actually block the player
-// -- see IsRoomBarrierGateEnabled's own doc comment. Defaults false (off/test mode): rooms play
-// exactly as they did before this system existed until explicitly turned on with
-// "DMC.SetRoomBarrierEnabled 1" in the console.
+// -- see IsRoomBarrierGateEnabled's own doc comment. Defaults true (on): barriers actually block
+// on every fresh launch now that room design/testing is done. Flip off temporarily in PIE with
+// "DMC.SetRoomBarrierEnabled 0" in the console if free-roam testing is needed again.
 static TAutoConsoleVariable<bool> CVarRoomBarrierEnabled(
 	TEXT("DMC.SetRoomBarrierEnabled"),
-	false,
-	TEXT("Whether cleared-room barriers (ARoomBarrier) and their matching ARoomExitTrigger actually block the player. Enemy kill-tracking always runs regardless of this. Defaults off."),
+	true,
+	TEXT("Whether cleared-room barriers (ARoomBarrier) and their matching ARoomExitTrigger actually block the player. Enemy kill-tracking always runs regardless of this. Defaults on."),
 	ECVF_Default);
 
 bool ARoomShell::IsRoomBarrierGateEnabled()

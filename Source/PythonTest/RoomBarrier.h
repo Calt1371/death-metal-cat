@@ -19,13 +19,11 @@ class ARoomShell;
  * they somehow squeeze past this actor's collision -- belt and suspenders, not load-bearing on its
  * own.
  *
- * DMC.SetRoomBarrierEnabled defaults to false (off): with it off, both this actor's blocking
- * collision and ARoomExitTrigger's gate are unconditionally bypassed, so rooms play exactly as they
- * did before this system existed -- deliberately, so testing/iterating on a room doesn't require
- * clearing every enemy first. Toggle live in PIE with the console command
- * "DMC.SetRoomBarrierEnabled 1" (or "0"); enemy registration/tracking (RoomShell::RegisterEnemy/
- * NotifyEnemyDefeated) runs unconditionally regardless of this variable, only the actual blocking
- * is gated by it.
+ * DMC.SetRoomBarrierEnabled defaults to true (on): barriers actually block the player on a fresh
+ * launch. Toggle live in PIE with the console command "DMC.SetRoomBarrierEnabled 0" (or "1") if
+ * free-roam testing/iterating on a room without clearing every enemy first is needed temporarily;
+ * enemy registration/tracking (RoomShell::RegisterEnemy/NotifyEnemyDefeated) runs unconditionally
+ * regardless of this variable, only the actual blocking is gated by it.
  *
  * Visual: FB_Trap_RoomBarrier is a 25-frame flipbook of the barrier's ambient "active" crackle loop
  * -- confirmed via visual review there's no distinct baked-in "opening" animation (the barrier's

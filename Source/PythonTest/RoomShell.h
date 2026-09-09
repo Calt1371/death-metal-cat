@@ -60,8 +60,8 @@ public:
 	/**
 	 * Wraps the DMC.SetRoomBarrierEnabled console variable (defined in RoomShell.cpp) -- the single
 	 * on/off switch ARoomBarrier and ARoomExitTrigger both check before actually blocking anything.
-	 * Defaults false (off) so rooms play exactly as before this system existed until explicitly
-	 * turned on; toggle live in PIE with "DMC.SetRoomBarrierEnabled 1" / "...0". Enemy registration/
+	 * Defaults true (on) so barriers actually block on a fresh launch; toggle live in PIE with
+	 * "DMC.SetRoomBarrierEnabled 1" / "...0" if free-roam testing is needed temporarily. Enemy registration/
 	 * tracking (RegisterEnemy/NotifyEnemyDefeated) is NOT gated by this -- it always runs, this only
 	 * controls whether that tracked state is actually allowed to block the player.
 	 */
